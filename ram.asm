@@ -6,10 +6,11 @@
 ; Author:	(C) Copyright  R.T.Russell 31-12-1983
 ; Modified By:	Dean Belfield
 ; Created:	12/05/2023
-; Last Updated:	06/06/2023
+; Last Updated:	26/06/2023
 ;
 ; Modinfo:
 ; 06/06/2023:	Modified to run in ADL mode
+; 26/06/2023:	Added temporary stores R0 and R1
 
 			.ASSUME	ADL = 1
 
@@ -49,6 +50,9 @@
 			XDEF	KEYDOWN 
 			XDEF	KEYASCII
 			XDEF	KEYCOUNT
+
+			XDEF	R0
+			XDEF	R1
 			
 			XDEF	RAM_START
 			XDEF	RAM_END
@@ -107,6 +111,8 @@ OSWRCHFH:		DS		1		; File handle for OSWRCHCHN
 KEYDOWN:		DS		1		; Keydown flag
 KEYASCII:		DS		1		; ASCII code of pressed key
 KEYCOUNT:		DS		1		; Counts every time a key is pressed
+R0:			DS		3		; General purpose storage for 8/16 to 24 bit operations
+R1:			DS		3		; 
 ;
 ; This must be at the end
 ;

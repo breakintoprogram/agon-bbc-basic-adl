@@ -4,13 +4,14 @@
 ; Author:	(C) Copyright  R.T.Russell  1984
 ; Modified By:	Dean Belfield
 ; Created:	12/05/2023
-; Last Updated:	06/06/2023
+; Last Updated:	26/06/2023
 ;
 ; Modinfo:
 ; 07/05/1984:	Version 2.3
 ; 01/03/1987:	Version 3.0
 ; 03/05/2022:	Modified by Dean Belfield
 ; 06/06/2023:	Modified to run in ADL mode
+; 26/06/2023:	Fixed binary and unary indirection
 
 			.ASSUME	ADL = 1
 
@@ -108,6 +109,7 @@
 			XREF	OSWRCHCH
 			XREF	NEWIT
 			XREF	BAD
+			XREF	R0
 ;
 ; A handful of common token IDs
 ;
@@ -1485,8 +1487,6 @@ GETVAR:			LD      A,(IY)			; Get the first character
 			INC     IY              	; Skip "("
 			JR      GETV3
 ;
-; TODO: Errors in cube.bas. Run once, set breakpoint, then keep doing GOTO 270 to replicate
-;
 GETV2:			PUSH    AF
 			CALL    COMMA
 GETV3:			PUSH    HL
@@ -1557,16 +1557,24 @@ GETVA:			PUSH    HL
 			CP      129			; Is it a string?
 			RET     Z               	; Yes, so exit here
 			PUSH    BC			
-			CALL    LOADN           	; LEFT OPERAND
+			CALL    LOADN           	; Left operand of the binary indirection (var?index or var!index)
 			CALL    SFIX
+			LD	A,L
 			EXX
+			LD	(R0+0),HL
+			LD	(R0+2),A
+			LD	HL,(R0)			; HL: 24-bit address of the variable in memory
 ;
-GETV0:			PUSH    HL
+GETV0:			PUSH    HL			; HL will be 0 for a unary indirection, or the address of the variable for a binary indirection
 			INC     IY
 			CALL    ITEMI
+			LD	A,L			;  A: The MSB of the address
 			EXX
+			LD	(R0+0),HL		; HL: The LSW of the address
+			LD	(R0+2),A		; R0: L'HL or the 24-bit address
 			POP     DE
 			POP     AF
+			LD	HL,(R0)			; HL: L'HL
 			ADD     HL,DE
 			PUSH    HL
 			POP     IX
@@ -1581,17 +1589,17 @@ GETV0:			PUSH    HL
 ;                 IY addresses delimiter
 ; Destroys: A,D,E,H,L,IY,F
 ;
-GETDEF:			LD      A,(IY+1)			; Get the next character from the tokenised line (the start of the procedure name)
-			CALL    RANGE1				; Is it in range: "0" to "9", "A" to "Z", "a' to "z", "@", "_" or "`"?
-			RET     C				; No so return with C set
-			LD      A,(IY)				; Fetch the current character from the tokenised line
-			LD      HL,FNPTR			; HL: Address of the dynamic function pointer in ram.asm
-			CP      FN				; Is it the token FN?
-			JR      Z,LOC2				; Yes, so skip to LOC2 with that pointer to find a match
-			LD      HL,PROPTR			; HL: Address of the dynamic procedure pointer in ram.asm
-			CP      PROC				; Is it the token PROC?
-			JR      Z,LOC2				; Yes, so skip to LOC2 with that pointer to find a match
-			SCF					; No, so just return with C set
+GETDEF:			LD      A,(IY+1)		; Get the next character from the tokenised line (the start of the procedure name)
+			CALL    RANGE1			; Is it in range: "0" to "9", "A" to "Z", "a' to "z", "@", "_" or "`"?
+			RET     C			; No so return with C set
+			LD      A,(IY)			; Fetch the current character from the tokenised line
+			LD      HL,FNPTR		; HL: Address of the dynamic function pointer in ram.asm
+			CP      FN			; Is it the token FN?
+			JR      Z,LOC2			; Yes, so skip to LOC2 with that pointer to find a match
+			LD      HL,PROPTR		; HL: Address of the dynamic procedure pointer in ram.asm
+			CP      PROC			; Is it the token PROC?
+			JR      Z,LOC2			; Yes, so skip to LOC2 with that pointer to find a match
+			SCF				; No, so just return with C set
 			RET
 ;
 ; LOCATE - Try to locate variable name in static or dynamic variables.
@@ -1615,104 +1623,104 @@ GETDEF:			LD      A,(IY+1)			; Get the next character from the tokenised line (t
 ; Static integer variables are named @%, A% to Z%
 ; All other variables are dynamic
 ;
-LOCATE:			SUB     '@'				; Check for valid range
-			RET     C				; First character not "@", "A" to "Z" or "a" to "z", so not a variable
-			LD      HL, 0				; Clear HL
-			CP      'Z'-'@'+1			; Check for static ("@", "A" to "Z"); if it is not static...
-			JR      NC,LOC0         		; Then branch here
-			LD	L, A				; HL = A
-			LD      A,(IY+1)        		; Check the 2nd character
-			CP      '%'				; If not "%" then it is not static...
-			JR      NZ,LOC1         		; Branch here
-			LD      A,(IY+2)			; Check the 3rd character
-			CP      '('				; If it is "(" (array) then it is not static...
-			JR      Z,LOC1          		; Branch here
+LOCATE:			SUB     '@'			; Check for valid range
+			RET     C			; First character not "@", "A" to "Z" or "a" to "z", so not a variable
+			LD      HL, 0			; Clear HL
+			CP      'Z'-'@'+1		; Check for static ("@", "A" to "Z"); if it is not static...
+			JR      NC,LOC0         	; Then branch here
+			LD	L, A			; HL = A
+			LD      A,(IY+1)        	; Check the 2nd character
+			CP      '%'			; If not "%" then it is not static...
+			JR      NZ,LOC1         	; Branch here
+			LD      A,(IY+2)		; Check the 3rd character
+			CP      '('			; If it is "(" (array) then it is not static...
+			JR      Z,LOC1          	; Branch here
 ;
 ; At this point we're dealing with a static variable
 ;
-			ADD     HL,HL				; HL: Variable index * 4
+			ADD     HL,HL			; HL: Variable index * 4
 			ADD	HL,HL
-			LD      DE,STAVAR       		; The static variable area in memory
-			ADD     HL,DE				; HL: The address of the static variable
-			INC     IY				; Skip the program pointer past the static variable name
+			LD      DE,STAVAR       	; The static variable area in memory
+			ADD     HL,DE			; HL: The address of the static variable
+			INC     IY			; Skip the program pointer past the static variable name
 			INC     IY	
-			LD      D,4             		; Set the type to be integer
-			XOR     A				; Set the Z flag
+			LD      D,4             	; Set the type to be integer
+			XOR     A			; Set the Z flag
 			RET
 ;
 ; At this point it's potentially a dynamic variable, just need to do a few more checks
 ;
-LOC0:			CP      '_'-'@'				; Check the first character is in
-			RET     C				; the range "_" to 
-			CP      'z'-'@'+1			; "z" (lowercase characters only)
-			CCF					; If it is not in range then
-			DEC     A               		; Set NZ flag and
-			RET     C				; Exit here
-			SUB     3				; This brings it in the range of 27 upwards (need to confirm)
-			LD	L, A				; HL = A
+LOC0:			CP      '_'-'@'			; Check the first character is in
+			RET     C			; the range "_" to 
+			CP      'z'-'@'+1		; "z" (lowercase characters only)
+			CCF				; If it is not in range then
+			DEC     A               	; Set NZ flag and
+			RET     C			; Exit here
+			SUB     3			; This brings it in the range of 27 upwards (need to confirm)
+			LD	L, A			; HL = A
 ;
 ; Yes, it's definitely a dynamic variable at this point...
 ;
-LOC1:			LD	A, L				; Fetch variable index
-			ADD	A, A				; x 2
-			ADD	A, L				; x 3
-			SUB	3				; Subtract 2 TODO: Should be 3
+LOC1:			LD	A, L			; Fetch variable index
+			ADD	A, A			; x 2
+			ADD	A, L			; x 3
+			SUB	3			; Subtract 2 TODO: Should be 3
 			LD	L, A
-			LD      DE, DYNVAR       		; The dynamic variable storage
-			RET	C				; Bounds check to trap for variable '@'
-			ADD     HL, DE				; HL: Address of first entry
+			LD      DE, DYNVAR       	; The dynamic variable storage
+			RET	C			; Bounds check to trap for variable '@'
+			ADD     HL, DE			; HL: Address of first entry
 ;
 ; Loop through the linked list of variables to find a match
 ;
-LOC2:			LD	DE, (HL)			; Fetch the original pointer
-			PUSH	HL				; Need to preserve HL for LOC6
-			XOR	A				; Reset carry flag
-			SBC	HL, HL				; Set HL to 0
-			SBC	HL, DE				; Compare with 0
-			POP	HL				; Restore the original pointer
-			JR	Z, LOC6				; If the pointer in DE is zero, the variable is undefined at this point
-			LD	HL, DE				; Make a copy of this pointer in HL
-			INC     HL              		; Skip the link (24-bits)
+LOC2:			LD	DE, (HL)		; Fetch the original pointer
+			PUSH	HL			; Need to preserve HL for LOC6
+			XOR	A			; Reset carry flag
+			SBC	HL, HL			; Set HL to 0
+			SBC	HL, DE			; Compare with 0
+			POP	HL			; Restore the original pointer
+			JR	Z, LOC6			; If the pointer in DE is zero, the variable is undefined at this point
+			LD	HL, DE			; Make a copy of this pointer in HL
+			INC     HL              	; Skip the link (24-bits)
 			INC     HL
-			INC	HL				; HL: Address of the variable name in DYNVARS
-			PUSH    IY				; IY: Address of the variable name in the program
+			INC	HL			; HL: Address of the variable name in DYNVARS
+			PUSH    IY			; IY: Address of the variable name in the program
 ;
-LOC3:			LD      A,(HL)          		; Compare
+LOC3:			LD      A,(HL)         		; Compare
 			INC     HL
 			INC     IY
 			CP      (IY)
-			JR      Z, LOC3				; Keep looping whilst we've got a match...
-			OR      A               		; Have we hit a terminator?
-			JR      Z,LOC5          		; Yes, so maybe we've found a variable
+			JR      Z, LOC3			; Keep looping whilst we've got a match...
+			OR      A               	; Have we hit a terminator?
+			JR      Z,LOC5          	; Yes, so maybe we've found a variable
 ;
-LOC4:			POP     IY				; Restore the pointer in the program
-			EX      DE, HL				; HL: New pointer in DYNVARS
-			JP      LOC2            		; Loop round and try again
+LOC4:			POP     IY			; Restore the pointer in the program
+			EX      DE, HL			; HL: New pointer in DYNVARS
+			JP      LOC2            	; Loop round and try again
 ;
 ; We might have located a variable at this point, just need to do a few more tests
 ;
 LOC5:			DEC     IY
 			LD      A,(IY)
 			CP      '('
-			JR      Z,LOC5A         		; FOUND
+			JR      Z,LOC5A         	; FOUND
 			INC     IY
 			CALL    RANGE
-			JR      C,LOC5A         		; FOUND
+			JR      C,LOC5A         	; FOUND
 			CP      '('
-			JR      Z,LOC4          		; KEEP LOOKING
+			JR      Z,LOC4          	; KEEP LOOKING
 			LD      A,(IY-1)
 			CALL    RANGE1
-			JR      NC,LOC4         		; KEEP LOOKING
+			JR      NC,LOC4         	; KEEP LOOKING
 LOC5A:			POP     DE
-TYPE_:			LD      A,(IY-1)			; Check the string type postfix
-			CP      '$'				; Is it a string?
-			LD      D,129				; Yes, so return D = 129
+TYPE_:			LD      A,(IY-1)		; Check the string type postfix
+			CP      '$'			; Is it a string?
+			LD      D,129			; Yes, so return D = 129
 			RET     Z               		
-			CP      '%'				; Is it an integer?
-			LD      D,4				; Yes, so return D = 4
+			CP      '%'			; Is it an integer?
+			LD      D,4			; Yes, so return D = 4
 			RET     Z               		
-			INC     D				; At this point it must be a float
-			CP      A				; Set the flags
+			INC     D			; At this point it must be a float
+			CP      A			; Set the flags
 			RET
 ;
 ; The variable is undefined at this point; HL will be zero

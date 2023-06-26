@@ -4,10 +4,11 @@
 ; Author:	(C) Copyright  R.T.Russell  1984
 ; Modified By:	Dean Belfield
 ; Created:	12/05/2023
-; Last Updated:	07/06/2023
+; Last Updated:	26/06/2023
 ;
 ; Modinfo:
 ; 07/06/2023:	Modified to run in ADL mode
+; 26/06/2023:	Fixed HEX and HEXSTR
 
 			.ASSUME	ADL = 1
 
@@ -410,9 +411,9 @@ HEX1:			INC     IY			; Move pointer to next character
 			LD      B,4			; Loop counter
 ;
 HEX2:			EXX				; Shift the result left B (4) times. This makes
-			ADD     HL,HL			; space for the incoming nibble in the least significant 4 bits
+			ADD.S   HL,HL			; space for the incoming nibble in the least significant 4 bits
 			EXX				; .
-			ADC     HL,HL			; .
+			ADC.S   HL,HL			; .
 			DJNZ    HEX2			; And loop
 			EXX
 			OR      L			; OR in the digit
@@ -1327,9 +1328,9 @@ HEXST1:			PUSH    BC
 			LD      B,4
 			XOR     A
 HEXST2:			EXX
-			ADD.S   HL,HL
+			ADD.S	HL,HL
 			EXX
-			ADC.S   HL,HL
+			ADC.S	HL,HL
 			RLA
 			DJNZ    HEXST2
 			POP     BC
