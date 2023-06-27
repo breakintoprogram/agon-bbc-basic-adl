@@ -109,6 +109,8 @@
 			XREF	OSWRCHCH
 			XREF	NEWIT
 			XREF	BAD
+			XREF	RAM_START
+			XREF	RAM_END
 			XREF	R0
 ;
 ; A handful of common token IDs

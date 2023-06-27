@@ -25,7 +25,7 @@
 <tool name="Assembler">
 <options>
 <option name="define" type="string" change-action="assemble">_EZ80ACCLAIM!=1,_SIMULATE=1</option>
-<option name="include" type="string" change-action="assemble">..\MOS\src</option>
+<option name="include" type="string" change-action="assemble">..\agon"-"mos\src</option>
 <option name="list" type="boolean" change-action="none">true</option>
 <option name="listmac" type="boolean" change-action="none">false</option>
 <option name="name" type="boolean" change-action="none">true</option>
@@ -117,7 +117,7 @@ CHANGE LORAM=RAM</option>
 <tool name="Assembler">
 <options>
 <option name="define" type="string" change-action="assemble">_EZ80ACCLAIM!=1,_SIMULATE=1</option>
-<option name="include" type="string" change-action="assemble">..\MOS\src</option>
+<option name="include" type="string" change-action="assemble">..\agon"-"mos\src</option>
 <option name="list" type="boolean" change-action="none">true</option>
 <option name="listmac" type="boolean" change-action="none">false</option>
 <option name="name" type="boolean" change-action="none">true</option>

@@ -122,6 +122,7 @@
 			XREF	LOADS
 			XREF	PUTCSR
 			XREF	OUT_
+			XREF	R0
 ;
 ; List of token values used in this module
 ;
