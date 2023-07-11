@@ -2,9 +2,10 @@
 ; Title:	BBC Basic for AGON
 ; Author:	Dean Belfield
 ; Created:	12/05/2023
-; Last Updated:	12/05/2023
+; Last Updated:	11/07/2023
 ;
 ; Modinfo:
+; 11/07/2023:	Fixed *BYE for ADL mode
 
 			.ASSUME	ADL = 1
 				
@@ -42,6 +43,8 @@
 			XDEF	OSLOAD
 			XDEF	OSSAVE
 			XDEF	EXPR_W2
+
+			XREF	_end			; In init.asm
 
 			XREF	ASC_TO_NUMBER
 			XREF	RAM_START
@@ -377,9 +380,8 @@ COMDS:  		DB	'BY','E'+80h		; BYE
 ; *BYE
 ;
 STAR_BYE:		CALL	VBLANK_STOP		; Restore MOS interrupts
-			POP	IX 			; The return address to init
-			LD	HL, 0			; The return code
-			JP	(IX)
+			LD	HL, 0			; The return value
+			JP	_end 			; Jump back to the end routine in init.asm
 	
 ; *VERSION
 ;

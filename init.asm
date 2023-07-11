@@ -3,14 +3,17 @@
 ;		Initialisation Code
 ; Author:	Dean Belfield
 ; Created:	12/05/2023
-; Last Updated:	12/05/2023
+; Last Updated:	11/07/2023
 ;
 ; Modinfo:
+; 11/07/2023:	Fixed *BYE for ADL mode
 
 			SEGMENT CODE
 
-			XREF	_main
-		
+			XDEF	_end			
+			
+			XREF	_main				; In main.asm
+			
 			.ASSUME	ADL = 1
 				
 			INCLUDE	"equs.inc"
@@ -34,44 +37,30 @@ _exec_name:		DB	"BBCBASIC.BIN", 0		; The executable name, only used in argv
 ;
 ; And the code follows on immediately after the header
 ;
-_start:
-;			PUSH		IY			; Preserve IY
-
-;			LD		IY, 0			; Preserve SPS
-;			ADD		IY, SP
-;			PUSH		IY
-
-;			EX		(SP), HL		; Get the SPS part of the return address
-;			PUSH		HL
-;			EX		(SP), HL		; And restore it for BASIC
-	
-			PUSH		AF			; Preserve the rest of the registers
+_start:			PUSH		AF			; Preserve the rest of the registers
 			PUSH		BC
 			PUSH		DE
 			PUSH		IX
 			PUSH		IY
 
-			LD		IX, argv_ptrs		; The argv array pointer address
+			LD		(_sps), SP 		; Preserve the 24-bit stack pointer (SPS)
+
+			LD		IX, _argv_ptrs		; The argv array pointer address
 			PUSH		IX
 			CALL		_parse_params		; Parse the parameters
 			POP		IX			; IX: argv
 			LD		B, 0			;  C: argc
-			CALL		_main			; Start user code
+			JP		_main			; Start user code
+;
+; This bit of code is called from STAR_BYE and returns us safely to MOS
+;			
+_end:			LD		SP, (_sps)		; Restore the stack pointer
 
 			POP		IY			; Restore the registers
 			POP		IX			
 			POP		DE
 			POP		BC
 			POP		AF
-
-;			EX		DE, HL 			; DE: Return code from BASIC
-;			POP		HL 			; The SPS part of the return address
-;			POP		IY			; Get the preserved SPS
-;			LD		SP, IY			; Restore SPS
-;			EX		(SP), HL		; Store the SPS part of the return address on the stack
-;			EX		DE, HL 			; HL: Return code from BASIC
-;			
-;			POP		IY			; Restore IY
 			RET					; Return to MOS
 						
 ; Parse the parameter string into a C array
@@ -147,7 +136,8 @@ _skip_spaces:		LD	A, (HL)			; Get the character from the parameter string
 			RET	NZ
 			INC	HL			; Advance to next character
 			JR	_skip_spaces		; Increment length	
-			
-; Storage for the argv array pointers
+
+; Storage
 ;
-argv_ptrs:		BLKP	argv_ptrs_max, 0		; Storage for the argv array pointers
+_sps:			DS	3			; Storage for the stack pointer
+_argv_ptrs:		BLKP	argv_ptrs_max, 0	; Storage for the argv array pointers
