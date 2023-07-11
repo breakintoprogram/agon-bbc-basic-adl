@@ -556,6 +556,7 @@ DELET1:			LD      A,(HL)			; Check whether it's the last line
 			OR      A			
 			JR      Z,WARMNC		; Yes, so do nothing
 			INC     HL			; Skip the line length byte
+			LD	DE, 0			; Clear DE
 			LD      E,(HL)			; Fetch the line number in DE
 			INC     HL
 			LD      D,(HL)
