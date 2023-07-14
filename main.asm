@@ -204,7 +204,7 @@ COLD:			POP	HL			; Pop the return address to init off SPS
 			CALL    OSINIT			; Call the machine specific OS initialisation routines
 			LD      (HIMEM),DE		; This returns HIMEM (ramtop) in DE - store in the HIMEM sysvar
 			LD      (PAGE_),HL		; And PAGE in HL (where BASIC program storage starts) - store in PAGE sysvar
-			LD      A,37H           	; Set LISTO sysvar; the bottom nibble is LISTO (7), top nibble is OPT (3)
+			LD      A,B7H           	; Set LISTO sysvar; the bottom nibble is LISTO (7), top nibble is OPT (B)
 			LD      (LISTON),A		
 			LD      HL,NOTICE
 			LD      (ERRTXT),HL
@@ -227,7 +227,7 @@ CLOOP:			SCF				; See above - not sure why this is here!
 			LD      HL,LISTON		; Pointer to the LISTO/OPT sysvar 
 			LD      A,(HL)			; Fetch the value
 			AND     0FH             	; Bottom nibble: LISTO
-			OR      30H             	; Top nibble: Default to OPT (3)
+			OR      B0H             	; Top nibble: Default to OPT (3) with ADL mode bit set to 1 for assembler
 			LD      (HL),A			; Store back in
 			SBC     HL,HL           	; HL: 0
 			LD      (ERRTRP),HL		; Clear ERRTRP sysvar 

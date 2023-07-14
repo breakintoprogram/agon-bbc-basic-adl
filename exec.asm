@@ -367,7 +367,7 @@ ASM:			LD      (ERRLIN),IY
 			LD      HL,LISTON
 			LD      A,(HL)
 			AND     0FH
-			OR      30H
+			OR      B0H
 			LD      (HL),A
 			JR      XEQR
 ;
@@ -1828,6 +1828,8 @@ SAVLO5:			CALL    CHECK
 DELIM:			LD      A,(IY)          ;ASSEMBLER DELIMITER
 			CP      ' '
 			RET     Z
+			CP	'.'
+			RET	Z
 			CP      ','
 			RET     Z
 			CP      ')'
@@ -2063,7 +2065,7 @@ CHNL:			INC     IY              ;SKIP '#'
 
 ; ASSEMBLER -------------------------------------------------------------------
 
-; LANGUAGE-INDEPENDENT CONTROL SECTION:
+; Language independant control section:
 ;  Outputs: A=delimiter, carry set if syntax error.
 ;
 ASSEM:			CALL    SKIP
@@ -2124,16 +2126,18 @@ ASSEM5:			POP     HL              	; Old PC
 			XOR     A
 			CP      E
 			JR      Z,ASSEM2
+;
 ASSEM1:			LD      A,(COUNT)
-			CP      17
-			LD      A,5
-			CALL    NC,TABIT        ;NEXT LINE
+			CP      20
+			LD      A,7
+			CALL    NC,TABIT        	; Next line
 			LD      A,(IX)
 			CALL    HEXSP
 			INC     IX
 			DEC     E
 			JR      NZ,ASSEM1
-ASSEM2:			LD      A,18
+;
+ASSEM2:			LD      A,22			; Tab to the disassembly field
 			CALL    TABIT
 			PUSH    IY
 			POP     HL
@@ -2162,18 +2166,19 @@ HEXOUT:			AND     0FH
 			ADC     A,40H
 			DAA
 OUTCH1:			JP      OUT_
+	
+; Processor Specific Translation Section:
 ;
-;PROCESSOR-SPECIFIC TRANSLATION SECTION:
-;
-;REGISTER USAGE: B - TYPE OF MOST RECENT OPERAND
-;                C - OPCODE BEING BUILT
-;                D - (IX) OR (IY) FLAG
-;                E - OFFSET FROM IX OR IY
-;               HL - NUMERIC OPERAND VALUE
-;               IX - CODE DESTINATION
-;               IY - SOURCE TEXT POINTER
-;   Inputs: A = initial character
-;  Outputs: Carry set if syntax error.
+; Register Usage: B: Type of most recent operand (the base value selected from the opcode table)
+;                 C: Opcode beig built
+;                 D: Flags
+;			Bit 7: Set to 1 if the instruction is an index instruction with offset
+;                 E: Offset from IX or IY
+;                HL: Numeric operand value
+;                IX: Code desination
+;                IY: Source text pointer
+;    Inputs: A = initial character
+;   Outputs: Carry set if syntax error.
 ;
 ASMB:			CP      '.'
 			JR      NZ,ASMB1
@@ -2198,23 +2203,23 @@ ASMB1:			CALL    SKIP
 			LD      HL,OPCODS
 			CALL    FIND
 			RET     C
-			LD      C,B     ;ROOT OPCODE
-			LD      D,0     ;CLEAR IX/IY FLAG
+			LD      C,B     		; Make a copy of the opcode in C
+			LD      D,0     		; Clear the flags
 ;
-;GROUP 0: Trivial cases requiring no computation
-;GROUP 1: As Group 0, but with "ED" prefix
+; GROUP 0: Trivial cases requiring no computation
+; GROUP 1: As Group 0, but with "ED" prefix
 ;
-			SUB     39			; The number of opcodes in GROUP0 and GROUP1
-			JR      NC,GROUP2		; If not in that range, then check GROUP2
-			CP      15-39			; Anything between 15 and 39 (neat compare trick here)
+			SUB     46			; The number of opcodes in GROUP0 and GROUP1
+			JR      NC,GROUP02		; If not in that range, then check GROUP2
+			CP      15-46			; Anything between 15 and 46 (neat compare trick here)
 			CALL    NC,ED			; Needs to be prefixed with ED
 			JR      BYTE0			; Then write the opcode byte
 ;
-;GROUP 2: BIT, RES, SET
-;GROUP 3: RLC, RRC, RL, RR, SLA, SRA, SRL
+; GROUP 2: BIT, RES, SET
+; GROUP 3: RLC, RRC, RL, RR, SLA, SRA, SRL
 ;
-GROUP2:			SUB     10			; The number of opcodes in GROUP2 and GROUP3
-			JR      NC,GROUP4		; If not in that range, then check GROUP4
+GROUP02:		SUB     10			; The number of opcodes in GROUP2 and GROUP3
+			JR      NC,GROUP04		; If not in that range, then check GROUP4
 			CP      3-10			; 
 			CALL    C,BIT_
 			RET     C
@@ -2223,51 +2228,52 @@ GROUP2:			SUB     10			; The number of opcodes in GROUP2 and GROUP3
 			CALL    CB
 			JR      BYTE0
 ;
-;GROUP 4 - PUSH, POP, EX (SP)
+; GROUP 4 - PUSH, POP, EX (SP)
 ;
-GROUP4:			SUB     3			; The number of opcodes in GROUP4
-			JR      NC,GROUP5		; If not in that range, then check GROUP5
-G4:			CALL    PAIR				
+GROUP04:		SUB     3			; The number of opcodes in GROUP4
+			JR      NC,GROUP05		; If not in that range, then check GROUP5
+GROUP04_1:		CALL    PAIR				
 			RET     C
 			JR      BYTE0				
 ;
-;GROUP 5 - SUB, AND, XOR, OR, CP
-;GROUP 6 - ADD, ADC, SBC
+; GROUP 5 - SUB, AND, XOR, OR, CP
+; GROUP 6 - ADD, ADC, SBC
 ;
-GROUP5:			SUB     8+2
-			JR      NC,GROUP7
+GROUP05:		SUB     8+2			; The number of opcodes in GROUP5 and GROUP6
+			JR      NC,GROUP07
 			CP      5-8
 			LD      B,7
-			CALL    NC,OPND
-			LD      A,B
-			CP      7
-			JR      NZ,G6HL
-G6:			CALL    REGLO
+			CALL    NC,OPND			; Get the first operand
+			LD      A,B			
+			CP      7			; Is the operand 'A'?
+			JR      NZ,GROUP05_HL		; No, so check for HL, IX or IY
+;			
+GROUP05_1:		CALL    REGLO			; Handle ADD A,?
 			LD      A,C
-			JR      NC,BIND1
-			XOR     46H
+			JR      NC,BIND1		; If it is a register, then write that out
+			XOR     46H			; Handle ADD A,n
 			CALL    BIND
 DB_:			CALL    NUMBER
 			JP      VAL8
 ;
-G6HL:			AND     3FH
+GROUP05_HL:		AND     3FH
 			CP      12
 			SCF
 			RET     NZ
 			LD      A,C
 			CP      80H
 			LD      C,9
-			JR      Z,G4
+			JR      Z,GROUP04_1
 			XOR     1CH
 			RRCA
 			LD      C,A
 			CALL    ED
-			JR      G4
+			JR      GROUP04_1
 ;
-;GROUP 7 - INC, DEC
+; GROUP 7 - INC, DEC
 ;
-GROUP7:			SUB     2
-			JR      NC,GROUP8
+GROUP07:		SUB     2			; The number of opcodes in GROUP7
+			JR      NC,GROUP08
 			CALL    REGHI
 			LD      A,C
 BIND1:			JP      NC,BIND
@@ -2279,44 +2285,71 @@ BIND1:			JP      NC,BIND
 			CALL    PAIR1
 			RET     C
 BYTE0:			LD      A,C
-			JP      BYTE2
+			JP      BYTE_
 ;
-;GROUP 8 - IN
-;GROUP 9 - OUT
+; Group 8: IN0, OUT0
 ;
-GROUP8:			SUB     2
-			JR      NC,GROUPA
-			CP      1-2
-			CALL    Z,CORN
-			EX      AF,AF'
-			CALL    REGHI
-			RET     C
-			EX      AF,AF'
-			CALL    C,CORN
-			INC     H
-			JR      Z,BYTE0
-			LD      A,B
-			CP      7
+GROUP08:		SUB	2			; The number of opcodes in GROUP8
+			JR	NC,GROUP09
+			CP	1-2
+			CALL    Z,NUMBER		; Fetch number first if OUT
+			EX      AF,AF'			; Save flags
+			CALL    REG			; Get the register value regardless
+			RET     C			; Return if not a register
+			EX      AF,AF'			; Restore the flags
+			CALL    C,NUMBER		; Fetch number last if IN
+			LD	A,B			; Get the register number
+			CP	6			; Fail on (HL)
 			SCF
-			RET     NZ
-			LD      A,C
+			RET	Z
+			CP	8			; Check it is just single pairs only
+			CCF
+			RET	C			; And return if it is an invalid register
+			RLCA				; Bind with the operand
+			RLCA
+			RLCA
+			ADD	A,C
+			CALL	BYTE_			; Write out the operand
+			JP	VAL8			; Write out the value
+;
+; GROUP 9 - IN
+; GROUP 10 - OUT
+;
+GROUP09:		SUB     2			; The number of opcodes in GROUP09 amd GROUP10
+			JR      NC,GROUP11
+			CP      1-2			; Check if Group 9 or Group 1
+			CALL    Z,CORN			; Call CORN if Group 10 (OUT)
+			EX      AF,AF'			; Save flags
+			CALL    REGHI			; Get the register value regardless
+			RET     C			; Return if not a register
+			EX      AF,AF'			; Restore the flags
+			CALL    C,CORN			; Call CORN if Group 9 (IN)
+			INC     H			; If it is IN r,(C) or OUT (C),r then
+			JR      Z,BYTE0			; Just write the operand out
+;			
+			LD      A,B			; Check the register
+			CP      7	
+			SCF
+			RET     NZ			; If it is not A, then return
+;
+			LD      A,C			; Bind the register with the operand
 			XOR     3
 			RLCA
 			RLCA
 			RLCA
-			CALL    BYTE_
-			JR      VAL8
+			CALL    BYTE_			; Write out the operand
+			JR      VAL8			; And the value
 ;
-;GROUP 10 - JR, DJNZ
+; GROUP 11 - JR, DJNZ
 ;
-GROUPA:			SUB     2
-			JR      NC,GROUPB
+GROUP11:		SUB     2			; The number of opcodes in GROUP11
+			JR      NC,GROUP12
 			CP      1-2
 			CALL    NZ,COND_
 			LD      A,C
-			JR      NC,GRPA
+			JR      NC,$F
 			LD      A,18H
-GRPA:			CALL    BYTE_
+$$:			CALL    BYTE_
 			CALL    NUMBER
 			LD      DE,(PC)
 			INC     DE
@@ -2327,69 +2360,71 @@ GRPA:			CALL    BYTE_
 			SBC     A,A
 			CP      H
 TOOFAR:			LD      A,1
-			JP      NZ,ERROR_        ;"Out of range"
+			JP      NZ,ERROR_		; Throw an "Out of range" error
 VAL8:			LD      A,L
-			JR      BYTE2
+			JP      BYTE_
 ;
-;GROUP 11 - JP
+; GROUP 12 - JP
 ;
-GROUPB:			LD      B,A		
-			JR      NZ,GROUPC
-			CALL    COND_
+GROUP12:		SUB	1			; The number of opcodes in GROUP12
+			JR	NC,GROUP13
+			LD	HL,EZ80SFS_2		; Just checking for .LIL and .SIS
+			CALL	EZ80SF			; Evaluate the suffix
+			RET	C			; Exit if not found
+			CALL    COND_			; Evaluate the conditions
 			LD      A,C
-			JR      NC,GRPB
+			JR      NC,GROUP12_1
 			LD      A,B
 			AND     3FH
 			CP      6
 			LD      A,0E9H
-			JR      Z,BYTE2
+			JP      Z,BYTE_
 			LD      A,0C3H
-GRPB:			CALL    BYTE_
-			JR	ADDR_
+GROUP12_1:		CALL    BYTE_			; Output the opcode (with conditions)
+			JP	ADDR_			; Output the address
 ;
-;GROUP 12 - CALL
+; GROUP 13 - CALL
 ;
-GROUPC:			DJNZ    GROUPD
-GRPC:			CALL    GRPE
-ADDR_:			CALL    NUMBER
-VAL16:			CALL    VAL8
-			LD      A,H
-			JR      BYTE2
+GROUP13:		SUB	1			; The number of opcodes in GROUP13
+			JR	NC,GROUP14
+GRPC:			CALL    GROUP15_1			; Output the opcode (with conditions)
+			JP	ADDR_			; Output the address
 ;
-;GROUP 13 - RST
+; GROUP 14 - RST
 ;
-GROUPD:			DJNZ    GROUPE
+GROUP14:		SUB	1			; The number of opcodes in GROUP14
+			JR	NC,GROUP15
 			CALL    NUMBER
 			AND     C
 			OR      H
 			JR      NZ,TOOFAR
 			LD      A,L
 			OR      C
-BYTE2:  		JP      BYTE1
+	  		JP      BYTE_
 ;
-;GROUP 14 - RET
+; GROUP 15 - RET
 ;
-GROUPE:			DJNZ    GROUPF
-GRPE:			CALL    COND_
+GROUP15:		SUB	1			; The number of opcodes in GROUP15
+			JR	NC,GROUP16
+GROUP15_1:		CALL    COND_
 			LD      A,C
-			JP      NC,BYTE1
+			JP      NC,BYTE_
 			OR      9
-			JP      BYTE1
+			JP      BYTE_
 ;
-;GROUP 15 - LD
+; GROUP 16 - LD
 ;
-GROUPF:			DEC	B
-			JP	NZ, GROUPZ
-;			DJNZ	GROUPZ
-			CALL    LDOP
-			JR      NC,LDA
+GROUP16:		SUB	1			; The number of opcodes in GROUP16
+			JR	NC,GROUP17
+			CALL    LDOP			
+			JP      NC,LDA
 			CALL    REGHI
 			EX      AF,AF'
 			CALL    SKIP
 			CP      '('
 			JR      Z,LDIN
 			EX      AF,AF'
-			JP      NC,G6
+			JP      NC,GROUP05_1
 			LD      C,1
 			CALL    PAIR1
 			RET     C
@@ -2401,9 +2436,9 @@ GROUPF:			DEC	B
 			AND     3FH
 			CP      12
 			LD      A,C
-			JR      NZ,GRPB
+			JP      NZ,GROUP12_1
 			LD      A,0F9H
-			JR      BYTE1
+			JP      BYTE_
 ;
 LDIN:			EX      AF,AF'
 			PUSH    BC
@@ -2414,7 +2449,7 @@ LDIN:			EX      AF,AF'
 			LD      C,0AH
 			CALL    PAIR1
 			CALL    LD16
-			JP      NC,GRPB
+			JP      NC,GROUP12_1
 			CALL    NUMBER
 			LD      C,2
 			CALL    PAIR
@@ -2423,56 +2458,117 @@ LDIN:			EX      AF,AF'
 			CALL    BYTE_
 			JP      VAL16	
 ;
-;OPT - SET OPTION
+; Group 17 - TST
 ;
-OPT:			DEC     B
-			JP      Z,DB_
-			DEC	B
-			JP	NZ, ADDR_
-;			DJNZ    ADDR_
-			CALL    NUMBER
-			LD      HL,LISTON
-			LD      C,A
-			RLD
-			LD      A,C
-			RRD
+GROUP17:		SUB	1			; The number of opcodes in GROUP17
+			JR	NC,OPTS
+			CALL	ED			; Needs to be prefixed with ED
+			CALL	REG			; Fetch the register
+			JR	NC,GROUP17_1		; It's just a register
+;
+			LD	A,64H			; Opcode for TST n
+			CALL	BYTE_			; Write out the opcode
+			CALL	NUMBER			; Get the number
+			JP	VAL8			; And write that out
+;
+GROUP17_1:		LD	A,B			; Check the register rangs
+			CP	8
+			CCF
+			RET	C			; Ret with carry flag set for error if out of range
+			RLCA				; Get the opcode value
+			RLCA
+			RLCA
+			ADD	A,C			; Add the opcode base in
+			JP	BYTE_
+
+;
+; Assembler directives - OPT, ADL
+;
+OPTS:			SUB	2
+			JR	NC, DEFS
+			CP	1-2			; Check for ADL opcode
+			JR	Z, ADL_
+;
+OPT:			CALL    NUMBER			; Fetch the OPT value
+			LD      HL,LISTON		; Address of the LISTON/OPT flag
+			AND	7			; Only interested in the first three bits
+			LD      C,A			; Store the new OPT value in C
+			RLD				; Shift the top nibble of LISTON (OPT) into A
+			AND	8			; Clear the bottom three bits, preserving the ADL bit
+			OR	C			; OR in the new value
+			RRD				; And shift the nibble back in
 			RET
 ;
-LDA:			CP      4
-			CALL    C,ED
-			LD      A,B
-BYTE1:			JP      BYTE_
+ADL_:			CALL	NUMBER			; Fetch the ADL value
+			AND	1			; Only interested if it is 0 or 1
+			RRCA				; Rotate to bit 7
+			LD	C,A			; Store in C
+			LD	A,(LISTON)		; Get the LISTON system variable
+			AND	7Fh			; Clear bit 7
+			OR	C			; OR in the ADL value
+			LD	(LISTON),A		; Store
+			RET			
 ;
-;GROUP 16 - eZ80 specific stuff
+; DEFB, DEFW, DEFL, DEFM
 ;
-GROUPZ:			LD	A, B
-			SUB	4			; Number of instructions in this group
-			LD	B, A
-			JR	Z, GROUPZ1		; TODO: Need to refactor assembler after this point
-			JR	NC, MISC		; TODO: as this double JR is a bit ugly
+DEFS:			OR	A			; Handle DEFB
+			JP	Z, DB_	
+			DEC	A			; Handle DEFW
+			JP	Z, ADDR16
+			DEC	A			; Handle DEFL
+			JP	Z, ADDR24
 ;
-GROUPZ1:
-;
-EDBYTE:			CALL	ED			; All eZ80 instructions with no operands			
-			JP	BYTE0			
-;
-;MISC - DEFB, DEFW, DEFM
-;
-MISC:			DJNZ    OPT
-			PUSH    IX
+			PUSH    IX			; Handle DEFM
 			CALL    EXPRS
 			POP     IX
 			LD      HL,ACCS
-DB1:			XOR     A
+$$:			XOR     A
 			CP      E
 			RET     Z
 			LD      A,(HL)
 			INC     HL
 			CALL    BYTE_
 			DEC     E
-			JR      DB1
+			JR      $B
+			
 ;
 ;SUBROUTINES:
+;
+EZ80SF:			LD	A,(IY)			; Check for a dot
+			CP	'.'
+			JR	Z, $F			; If preset, then carry on processing the eZ80 suffix
+			OR	A			; Reset the carry flag (no error)
+			RET				; And return
+$$:			INC	IY 			; Skip the dot
+			PUSH	BC			; Push the operand
+			PUSH	DE			; Push the flags
+			CALL	FIND 			; Look up the operand
+			LD	A,B			; The operand value
+			CALL	NC,BYTE_ 		; Write it out if found
+			POP	DE 
+			POP	BC 			; Restore the operand
+			RET
+
+ADDR_:			LD	A, (LISTON)		; Check the ADL flag (bit 7 of LISTON)
+			RLCA				; Shift bit 7 into the carry
+			JR	C, ADDR24 		; If it is set, then default to 24-bit addresses
+;
+ADDR16:			CALL	NUMBER			; Fetch an address (16-bit) and fall through to VAL16
+VAL16:			CALL    VAL8			; Write out a 16-bit value (HL)
+			LD      A,H
+			JP      BYTE_
+;
+ADDR24:			CALL    NUMBER			; Fetch an address (24-bit) and fall through to VAL24
+VAL24:			CALL	VAL16			; Lower 16-bits are in HL
+			EXX
+			LD	A,L			; Upper 16-bits are in HL', just need L' to make up 24-bit value
+			EXX
+			JP	BYTE_
+;
+LDA:			CP      4
+			CALL    C,ED
+			LD      A,B
+			JP      BYTE_
 ;
 LD16:			LD      A,B
 			JR      C,LD8
@@ -2493,48 +2589,54 @@ LD8:			CP      7
 			OR      30H
 			RET
 ;
+; Used in IN and OUT to handle whether the operand is C or a number
+;
 CORN:			PUSH    BC
-			CALL    OPND
-			BIT     5,B
+			CALL    OPND			; Get the operand
+			BIT     5,B			
 			POP     BC
-			JR      Z,NUMBER
-			LD      H,-1
-ED:			LD      A,0EDH
+			JR      Z,NUMBER		; If bit 5 is clear, then it's IN A,(N) or OUT (N),A, so fetch the port number
+			LD      H,-1			; At this point it's IN r,(C) or OUT (C),r, so flag by setting H to &FF
+;
+ED:			LD      A,0EDH			; Write an ED prefix out
 			JR      BYTE_
 ;
 CB:			LD      A,0CBH
 BIND:			CP      76H
 			SCF
-			RET     Z               ;REJECT LD (HL),(HL)
+			RET     Z               	; Reject LD (HL),(HL)
 			CALL    BYTE_
-			INC     D
-			RET     P
-			LD      A,E
+			BIT	7,D			; Check the index bit in flags
+			RET     Z	
+			LD      A,E			; If there is an index, output the offset
 			JR      BYTE_
 ;
 ; Search through the operand table
+; Returns:
+; - B: The operand type
+; - D: Bit 7: 0 = no prefix, 1 = prefix
+; - E: The IX/IY offset
+; - F: Carry if not found
 ;
 OPND:			PUSH    HL			; Preserve HL
 			LD      HL,OPRNDS		; The operands table
 			CALL    FIND			; Find the operand
 			POP     HL
-			RET     C			; Ret
-			BIT     7,B
-			RET     Z
-			BIT     3,B
+			RET     C			; Return if not found
+			BIT     7,B			; Check if it is an index register (IX, IY)
+			RET     Z			; Return if it isn't
+			SET	7,D			; Set flag to indicate we've got an index
+			BIT     3,B			; Check if an offset is required
 			PUSH    HL
-			CALL    Z,OFFSET
-			LD      E,L
+			CALL    Z,OFFSET		; If bit 3 of B is zero, then get the offset
+			LD      E,L			; E: The offset
 			POP     HL
-			LD      A,0DDH
-			BIT     6,B
-			JR      Z,OP1
-			LD      A,0FDH
-OP1:			OR      A
-			INC     D
-			LD      D,A
-			RET     M
-BYTE_:			LD      (IX),A
+			LD	A,DDH			; IX prefix
+			BIT     6,B			; If bit 6 is reset then
+			JR      Z,BYTE_			; It's an IX instruction, otherwise set
+			LD	A,FDH			; IY prefix
+;
+BYTE_:			LD      (IX),A			; Write a byte out
 			INC     IX
 			OR      A
 			RET
@@ -2604,19 +2706,30 @@ ORC:			OR      C
 			RET
 ;
 LDOP:			LD      HL,LDOPS
+
 ;
-FIND:			CALL    SKIP				; sKIP
-EXIT_:			LD      B,0
-			SCF
-			RET     Z
-			CP      DEF_
+; Look up a value in a table
+; Parameters:
+; - IY: Address of the assembly language line in the BASIC program area
+; - HL: Address of the table
+; Returns:
+; - B: The operand code
+; - F: Carry set if not found
+;
+FIND:			CALL    SKIP			; Skip delimiters
+;
+EXIT_:			LD      B,0			; Set B to 0
+			SCF				; Set the carry flag
+			RET     Z			; Returns if Z
+;
+			CP      DEF_			; Special case for token DEF (used in DEFB, DEFW, DEFL, DEFM)
 			JR      Z,FIND0
-			CP      TOR+1
+			CP      TOR+1			; Special case for tokens AND and OR
 			CCF
 			RET     C
-FIND0:			LD      A,(HL)
-			OR      A
-			JR      Z,EXIT_
+FIND0:			LD      A,(HL)			; Check for the end of the table (0 byte marker)
+			OR      A		
+			JR      Z,EXIT_			; Exit
 			XOR     (IY)
 			AND     01011111B
 			JR      Z,FIND2
@@ -2628,11 +2741,11 @@ FIND1:			BIT     7,(HL)
 			JR      FIND0
 ;
 FIND2:			PUSH    IY
-FIND3:			BIT     7,(HL)
+FIND3:			BIT     7,(HL)			; Is this the end of token marker?
 			INC     IY
 			INC     HL
-			JR      NZ,FIND5
-			CP      (HL)
+			JR      NZ,FIND5		; Yes
+			CP      (HL)			
 			CALL    Z,SKIP0
 			LD      A,(HL)
 			XOR     (IY)
@@ -2650,12 +2763,12 @@ FIND6:			LD      A,B
 			RET
 ;
 SKIP0:			INC     HL
-SKIP:			CALL    DELIM
-			RET     NZ
-			CALL    TERM
-			RET     Z
-			INC     IY
-			JR      SKIP
+SKIP:			CALL    DELIM			; Is it a delimiter?
+			RET     NZ			; No, so return
+			CALL    TERM			; Is it a terminator?
+			RET     Z			; Yes, so return
+			INC     IY			; Increment the basic program counter
+			JR      SKIP			; And loop
 ;
 SIGN:			CP      '+'
 			RET     Z
@@ -2664,185 +2777,208 @@ SIGN:			CP      '+'
 
 ; Z80 opcode list
 ;
-; Group 0:
+; Group 0: (15 opcodes)
 ;
-OPCODS:			DB    'NO','P'+80H,00h
-			DB    'RLC','A'+80H,07h
-			DB    'EX',0,'AF',0,'AF','''+80H,08h
-			DB    'RRC','A'+80H,0FH
-			DB    'RL','A'+80H,17H
-			DB    'RR','A'+80H,1FH
-			DB    'DA','A'+80H,27H
-			DB    'CP','L'+80H,2FH
-			DB    'SC','F'+80H,37H
-			DB    'CC','F'+80H,3FH
-			DB    'HAL','T'+80H,76H
-			DB    'EX','X'+80H,D9H
-			DB    'EX',0,'DE',0,'H','L'+80H,EBH
-			DB    'D','I'+80H,F3H
-			DB    'E','I'+80H,FBH
+OPCODS:			DB	'NO','P'+80H,00h	; # 00h
+			DB	'RLC','A'+80H,07h
+			DB	'EX',0,'AF',0,'AF','''+80H,08h
+			DB	'RRC','A'+80H,0FH
+			DB	'RL','A'+80H,17H
+			DB	'RR','A'+80H,1FH
+			DB	'DA','A'+80H,27H
+			DB	'CP','L'+80H,2FH
+			DB	'SC','F'+80H,37H
+			DB	'CC','F'+80H,3FH
+			DB	'HAL','T'+80H,76H
+			DB	'EX','X'+80H,D9H
+			DB	'EX',0,'DE',0,'H','L'+80H,EBH
+			DB	'D','I'+80H,F3H
+			DB	'E','I'+80H,FBH
 ;
-; Group 1:
+; Group 1: (31 opcodes)
 ;
-			DB    'NE','G'+80H,44H
-			DB    'IM',0,'0'+80H,46H
-			DB    'RET','N'+80H,45H
-			DB    'RET','I'+80H,4DH
-			DB    'IM',0,'1'+80H,56H
-			DB    'IM',0,'2'+80H,5EH
-			DB    'RR','D'+80H,67H
-			DB    'RL','D'+80H,6FH
-			DB    'LD','I'+80H,A0H
-			DB    'CP','I'+80H,A1H
-			DB    'IN','I'+80H,A2H
-			DB    'OUT','I'+80H,A3H
-			DB    'LD','D'+80H,A8H
-			DB    'CP','D'+80H,A9H
-			DB    'IN','D'+80H,AAH
-			DB    'OUT','D'+80H,ABH
-			DB    'LDI','R'+80H,B0H
-			DB    'CPI','R'+80H,B1H
-			DB    'INI','R'+80H,B2H
-			DB    'OTI','R'+80H,B3H
-			DB    'LDD','R'+80H,B8H
-			DB    'CPD','R'+80H,B9H
-			DB    'IND','R'+80H,BAH
-			DB    'OTD','R'+80H,BBH
+			DB	'NE','G'+80H,44H	; 0Fh
+			DB	'IM',0,'0'+80H,46H
+			DB	'RET','N'+80H,45H
+			DB	'MLT',0,'B','C'+80H,4CH
+			DB	'RET','I'+80H,4DH
+			DB	'IM',0,'1'+80H,56H
+			DB	'MLT',0,'D','E'+80H,5CH						
+			DB	'IM',0,'2'+80H,5EH
+			DB	'RR','D'+80H,67H
+			DB	'MLT',0,'H','L'+80H,6CH
+			DB	'RL','D'+80H,6FH
+			DB	'SL','P'+80H,76H
+			DB	'MLT',0,'S','P'+80H,7CH
+			DB	'STMI','X'+80H,7DH
+			DB	'RSMI','X'+80H,7EH
+			DB	'LD','I'+80H,A0H
+			DB	'CP','I'+80H,A1H
+			DB	'IN','I'+80H,A2H
+			DB	'OUT','I'+80H,A3H
+			DB	'LD','D'+80H,A8H
+			DB	'CP','D'+80H,A9H
+			DB	'IN','D'+80H,AAH
+			DB	'OUT','D'+80H,ABH
+			DB	'LDI','R'+80H,B0H
+			DB	'CPI','R'+80H,B1H
+			DB	'INI','R'+80H,B2H
+			DB	'OTI','R'+80H,B3H
+			DB	'LDD','R'+80H,B8H
+			DB	'CPD','R'+80H,B9H
+			DB	'IND','R'+80H,BAH
+			DB	'OTD','R'+80H,BBH
 ;
-; Group 2:
+; Group 2: (3 opcodes)
 ;
-			DB    'BI','T'+80H,40H
-			DB    'RE','S'+80H,80H
-			DB    'SE','T'+80H,C0H
+			DB	'BI','T'+80H,40H	; 2Eh
+			DB	'RE','S'+80H,80H
+			DB	'SE','T'+80H,C0H
 ;
-; Group 3:
+; Group 3: (7 opcodes)
 ;
-			DB    'RL','C'+80H,00H
-			DB    'RR','C'+80H,08H
-			DB    'R','L'+80H,10H
-			DB    'R','R'+80H,18H
-			DB    'SL','A'+80H,20H
-			DB    'SR','A'+80H,28H
-			DB    'SR','L'+80H,38H
+			DB	'RL','C'+80H,00H	; 31h
+			DB	'RR','C'+80H,08H
+			DB	'R','L'+80H,10H
+			DB	'R','R'+80H,18H
+			DB	'SL','A'+80H,20H
+			DB	'SR','A'+80H,28H
+			DB	'SR','L'+80H,38H
 ;
-; Group 4:
+; Group 4: (3 opcodes)
 ;
-			DB    'PO','P'+80H,C1H
-			DB    'PUS','H'+80H,C5H
-			DB    'EX',0,'(S','P'+80H,E3H
+			DB	'PO','P'+80H,C1H	; 38h
+			DB	'PUS','H'+80H,C5H
+			DB	'EX',0,'(S','P'+80H,E3H
 ;
-; Group 5:
+; Group 5: (7 opcodes)
 ;
-			DB    'SU','B'+80H,90H
-			DB    'AN','D'+80H,A0H
-			DB    'XO','R'+80H,A8H
-			DB    'O','R'+80H,B0H
-			DB    'C','P'+80H,B8H
-			DB    TAND,A0H				; TAND: Tokenised AND
-			DB    TOR,B0H				; TOR: Tokenised OR
+			DB	'SU','B'+80H,90H	; 3Bh
+			DB	'AN','D'+80H,A0H
+			DB	'XO','R'+80H,A8H
+			DB	'O','R'+80H,B0H
+			DB	'C','P'+80H,B8H
+			DB	TAND,A0H		; TAND: Tokenised AND
+			DB	TOR,B0H			; TOR: Tokenised OR
 ;
-; Group 6
+; Group 6 (3 opcodes)
 ;
-			DB    'AD','D'+80H,80H
-			DB    'AD','C'+80H,88H
-			DB    'SB','C'+80H,98H
+			DB	'AD','D'+80H,80H	; 42h
+			DB	'AD','C'+80H,88H
+			DB	'SB','C'+80H,98H
 ;
-; Group 7:
+; Group 7: (2 opcodes)
 ;
-			DB    'IN','C'+80H,04H
-			DB    'DE','C'+80H,05H
+			DB	'IN','C'+80H,04H	; 45h
+			DB	'DE','C'+80H,05H
 ;
-; Group 8:
+; Group 8: (2 opcodes)
 ;
-			DB    'I','N'+80H,40H
+			DB	'IN','0'+80H,00H	; 47h
+			DB	'OUT','0'+80H,01H
 ;
-; Group 9:
+; Group 9: (1 opcode)
 ;
-			DB    'OU','T'+80H,41H
+			DB	'I','N'+80H,40H		; 49h
 ;
-; Group 10:
+; Group 10: (1 opcode)
 ;
-			DB    'J','R'+80H,20H
-			DB    'DJN','Z'+80H,10H
+			DB	'OU','T'+80H,41H	; 4Ah
 ;
-; Group 11:
+; Group 11: (2 opcodes)
 ;
-			DB    'J','P'+80H,C2H
+			DB	'J','R'+80H,20H		; 4Bh
+			DB	'DJN','Z'+80H,10H
 ;
-; Group 12:
+; Group 12: (1 opcode)
 ;
-			DB    'CAL','L'+80H,C4H
+			DB	'J','P'+80H,C2H		; 4Dh
 ;
-; Group 13:
+; Group 13: (1 opcode)
 ;
-			DB    'RS','T'+80H,C7H
+			DB	'CAL','L'+80H,C4H	; 4Eh
 ;
-; Group 14:
+; Group 14: (1 opcode)
 ;
-			DB    'RE','T'+80H,C0H
+			DB	'RS','T'+80H,C7H	; 4Fh
 ;
-; Group 15:
+; Group 15: (1 opcode)
 ;
-			DB    'L','D'+80H,40H
+			DB	'RE','T'+80H,C0H	; 50h
 ;
-; Group 16: eZ80 specific (4)
+; Group 16: (1 opcode)
 ;
-			DB    'MLT',0,'B','C'+80H,4CH
-			DB    'MLT',0,'D','E'+80H,5CH						
-			DB    'MLT',0,'H','L'+80H,6CH
-			DB    'MLT',0,'S','P'+80H,7CH
+			DB	'L','D'+80H,40H		; 51h
+;
+; Group 17: (1 opcode)
+;
+			DB	'TS','T'+80H,04H	; 52h
+
 ;
 ; Assembler Directives
 ;
-			DB    DEF_ & 7FH,'M'+80H,00H
-			DB    DEF_ & 7FH,'B'+80H,00H
-			DB    'OP','T'+80H,00H
-			DB    DEF_ & 7FH,'W'+80H,00H
+			DB	'OP','T'+80H,00H	; 53h OPT
+			DB	'AD','L'+80H,00H	; 54h ADL
 ;
-			DB    0
-			
+			DB	DEF_ & 7FH,'B'+80H,00H	; 55h Tokenised DEF + B
+			DB	DEF_ & 7FH,'W'+80H,00H	; 56h Tokenised DEF + W
+			DB	DEF_ & 7FH,'L'+80H,00H	; 57h Tokenised DEF + L
+			DB 	DEF_ & 7FH,'M'+80H,00H	; 58h Tokenised DEF + M
+;
+			DB	0
+;			
 ; Operands
 ;
-OPRNDS:			DB    'B'+80H, 00H
-			DB    'C'+80H, 01H
-			DB    'D'+80H, 02H
-			DB    'E'+80H, 03H
-			DB    'H'+80H, 04H
-			DB    'L'+80H, 05H
-			DB    '(H','L'+80H,06H
-			DB    'A'+80H, 07H
-			DB    '(I','X'+80H,86H
-			DB    '(I','Y'+80H,C6H
+OPRNDS:			DB	'B'+80H, 00H
+			DB	'C'+80H, 01H
+			DB	'D'+80H, 02H
+			DB	'E'+80H, 03H
+			DB	'H'+80H, 04H
+			DB	'L'+80H, 05H
+			DB	'(H','L'+80H,06H
+			DB	'A'+80H, 07H
+			DB	'(I','X'+80H,86H
+			DB	'(I','Y'+80H,C6H
 ;
-			DB    'B','C'+80H,08H
-			DB    'D','E'+80H,0AH
-			DB    'H','L'+80H,0CH
-			DB    'I','X'+80H,8CH
-			DB    'I','Y'+80H,CCH
-			DB    'A','F'+80H,0EH
-			DB    'S','P'+80H,0EH
+			DB	'B','C'+80H,08H
+			DB	'D','E'+80H,0AH
+			DB	'H','L'+80H,0CH
+			DB	'I','X'+80H,8CH
+			DB	'I','Y'+80H,CCH
+			DB	'A','F'+80H,0EH
+			DB	'S','P'+80H,0EH
 ;
-			DB    'N','Z'+80H,10H
-			DB    'Z'+80H,11H
-			DB    'N','C'+80H,12H
-			DB    'P','O'+80H,14H
-			DB    'P','E'+80H,15H
-			DB    'P'+80H,16H
-			DB    'M'+80H,17H
+			DB	'N','Z'+80H,10H
+			DB	'Z'+80H,11H
+			DB	'N','C'+80H,12H
+			DB	'P','O'+80H,14H
+			DB	'P','E'+80H,15H
+			DB	'P'+80H,16H
+			DB	'M'+80H,17H
 ;
-			DB    '(','C'+80H,20H
+			DB	'(','C'+80H,20H
 ;
-			DB    0
+			DB	0
+;
 ; Load operations
 ;
-LDOPS:			DB    'I',0,'A'+80H,47H
-			DB    'R',0,'A'+80H,4FH
-			DB    'A',0,'I'+80H,57H
-			DB    'A',0,'R'+80H,5FH
-			DB    '(BC',0,'A'+80H,02h
-			DB    '(DE',0,'A'+80H,12H
-			DB    'A',0,'(B','C'+80H,0AH
-			DB    'A',0,'(D','E'+80H,1AH
+LDOPS:			DB	'I',0,'A'+80H,47H
+			DB	'R',0,'A'+80H,4FH
+			DB	'A',0,'I'+80H,57H
+			DB	'A',0,'R'+80H,5FH
+			DB	'(BC',0,'A'+80H,02h
+			DB	'(DE',0,'A'+80H,12H
+			DB	'A',0,'(B','C'+80H,0AH
+			DB	'A',0,'(D','E'+80H,1AH
+;
+			DB	0
+;
+; eZ80 suffixes
+;
+EZ80SFS_1:		DB	'LI','S'+80H,49H
+			DB	'SI','L'+80H,52H
+EZ80SFS_2:		DB	'SI','S'+80H,40H
+			DB	'LI','L'+80H,5BH			
 ;
 			DB    0
 ;

@@ -95,7 +95,7 @@ LISTON:			DS		1               ; LISTO (bottom nibble)
 							; - BIT 4: If set, then list whilst assembling
 							; - BIT 5: If set, then assembler errors are reported
 							; - BIT 6: If set, then place the code starting at address pointed to by O%
-							; - BIT 7: Unused
+							; - BIT 7: If set, then assemble in ADL mode, otherwise assemble in Z80 mode
 INCREM:			DS		1               ; Auto-Increment Value
 ;
 ; Extra Agon-implementation specific system variables
