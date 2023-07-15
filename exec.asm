@@ -2174,40 +2174,39 @@ OUTCH1:			JP      OUT_
 ;			Bit 6: Set to 1 if the instruction is an index instruction with offset
 ;                 E: Offset from IX or IY
 ;                HL: Numeric operand value
-;                IX: Code desination
+;                IX: Code destination pointer
 ;                IY: Source text pointer
 ;    Inputs: A = initial character
 ;   Outputs: Carry set if syntax error.
 ;
-ASMB:			CP      '.'
-			JR      NZ,ASMB1
-			INC     IY
-			PUSH    IX
-			CALL    VAR_
+ASMB:			CP      '.'			; Check for a dot; this indicates a label
+			JR      NZ,ASMB1		; No, so just process the instruction
+			INC     IY			; Skip past the dot to the label name
+			PUSH    IX			; Store the code destination pointer
+			CALL    VAR_			; Create a variable
 			PUSH    AF
-			CALL    ZERO
+			CALL    ZERO			; Zero it
 			EXX
-			LD      HL,(PC)
+			LD      HL,(PC)			; TODO: This stores the PC in HL and looks 16-bit to me
 			EXX
 			POP     AF
-			CALL    STORE
-			POP     IX
-ASMB1:			CALL    SKIP
-			RET     Z
-			CP      TCALL
-			LD      C,0C4H
-			INC     IY
-			JP      Z,GRPC
-			DEC     IY
-			LD      HL,OPCODS
-			CALL    FIND
-			RET     C
-			PUSH	AF
-			LD	A,(LISTON)
+			CALL    STORE			; Store the program counter
+			POP     IX			; Restore the code destination pointer
+;			
+ASMB1:			LD	A,(LISTON)		; Get the OPT flags
 			AND	80H
-			LD      D,A     		; Set the initial ADL mode
-			LD      C,B     		; Make a copy of the opcode in C
-			POP	AF 
+			LD      D,A     		;  D: Clear the flags and set the initial ADL mode (copied from bit 7 of LISTON)
+			CALL    SKIP			; Skip any whitespace
+			RET     Z			; And return if there is nothing further to process
+			CP      TCALL			; Check if it is the token CALL (it will have been tokenised by BASIC)
+			LD      C,0C4H			;  A: The base operand
+			INC     IY			; Skip past the token
+			JP      Z,GROUP13_1		; And jump to GROUP13, which handles CALL
+			DEC     IY			; Skip back, as we're not doing the above at this point
+			LD      HL,OPCODS		; HL: Pointer to the eZ80 opcodes table
+			CALL    FIND			; Find the opcode
+			RET     C			; If not found, then return; carry indicates an error condition
+			LD      C,B     		;  C: A copy of the opcode
 ;
 ; GROUP 0: Trivial cases requiring no computation
 ; GROUP 1: As Group 0, but with "ED" prefix
@@ -2371,9 +2370,8 @@ VAL8:			LD      A,L
 ;
 GROUP12:		SUB	1			; The number of opcodes in GROUP12
 			JR	NC,GROUP13
-			LD	HL,EZ80SFS_2		; Just checking for .LIL and .SIS
-			CALL	EZ80SF			; Evaluate the suffix
-			RET	C			; Exit if not found
+			CALL	EZ80SF_PART		; Evaluate the suffix (just LIL and SIS)
+			RET	C			; Exit if an invalid suffix is provided
 			CALL    COND_			; Evaluate the conditions
 			LD      A,C
 			JR      NC,GROUP12_1
@@ -2390,13 +2388,16 @@ GROUP12_1:		CALL    BYTE_			; Output the opcode (with conditions)
 ;
 GROUP13:		SUB	1			; The number of opcodes in GROUP13
 			JR	NC,GROUP14
-GRPC:			CALL    GROUP15_1			; Output the opcode (with conditions)
+GROUP13_1:		CALL	EZ80SF_FULL		; Evaluate the suffix
+			CALL    GROUP15_1		; Output the opcode (with conditions)
 			JP	ADDR_			; Output the address
 ;
 ; GROUP 14 - RST
 ;
 GROUP14:		SUB	1			; The number of opcodes in GROUP14
 			JR	NC,GROUP15
+			CALL	EZ80SF_FULL		; Evaluate the suffix
+			RET	C			; Exit if an invalid suffix provided		
 			CALL    NUMBER
 			AND     C
 			OR      H
@@ -2537,20 +2538,51 @@ $$:			XOR     A
 ;
 ;SUBROUTINES:
 ;
-EZ80SF:			LD	A,(IY)			; Check for a dot
+EZ80SF_PART:		LD	A,(IY)			; Check for a dot
 			CP	'.'
-			JR	Z,$F			; If preset, then carry on processing the eZ80 suffix
+			JR	Z, $F			; If present, then carry on processing the eZ80 suffix
+			OR	A			; Reset the carry flag (no error)
+			RET				; And return
+$$:			INC	IY			; Skip the dot
+			PUSH	BC			; Push the operand
+			LD	HL,EZ80SFS_2		; Check the shorter fully qualified table (just LIL and SIS)
+			CALL	FIND			; Look up the operand
+			JR	NC,EZ80SF_OK
+			POP	BC			; Not found at this point, so will return with a C (error)
+			RET
+;			
+EZ80SF_FULL:		LD	A,(IY)			; Check for a dot
+			CP	'.'
+			JR	Z,$F			; If present, then carry on processing the eZ80 suffix
 			OR	A			; Reset the carry flag (no error)
 			RET				; And return
 $$:			INC	IY 			; Skip the dot
 			PUSH	BC			; Push the operand
-			PUSH	DE			; Push the flags
+			LD	HL,EZ80SFS_1		; First check the fully qualified table
 			CALL	FIND 			; Look up the operand
-			LD	A,B			; The operand value
+			JR	NC,EZ80SF_OK		; Yes, we've found it, so go write it out
+			CALL	EZ80SF_TABLE		; Get the correct shortcut table in HL based upon the ADL mode
+			CALL	FIND
+			JR	NC,EZ80SF_OK
+			POP	BC			; Not found at this point, so will return with a C (error)
+			RET
+;
+EZ80SF_OK:		LD	A,B			; The operand value
 			CALL	NC,BYTE_ 		; Write it out if found
-			POP	DE 
+			RES	7,D			; Clear the default ADL mode from the flags
+			AND	2			; Check the second half of the suffix (.xxL)
+			RRCA				; Shift into bit 7
+			RRCA
+			OR	D			; Or into bit 7 of D
+			LD	D,A
 			POP	BC 			; Restore the operand
 			RET
+;
+EZ80SF_TABLE:		LD	HL,EZ80SFS_ADL0		; Return with the ADL0 lookup table
+			BIT 	7,D			; if bit 7 of D is 0
+			RET	Z
+			LD	HL,EZ80SFS_ADL1		; Otherwise return with the ADL1 lookup table
+			RET 
 ;
 ADDR_:			BIT	7,D			; Check the ADL flag
 			JR	NZ,ADDR24 		; If it is set, then use 24-bit addresses
@@ -2865,8 +2897,8 @@ OPCODS:			DB	'NO','P'+80H,00h	; # 00h
 			DB	'XO','R'+80H,A8H
 			DB	'O','R'+80H,B0H
 			DB	'C','P'+80H,B8H
-			DB	TAND,A0H		; TAND: Tokenised AND
-			DB	TOR,B0H			; TOR: Tokenised OR
+			DB	TAND,A0H		; 40h TAND: Tokenised AND
+			DB	TOR,B0H			; 41h TOR: Tokenised OR
 ;
 ; Group 6 (3 opcodes)
 ;
@@ -2980,14 +3012,34 @@ LDOPS:			DB	'I',0,'A'+80H,47H
 ;
 			DB	0
 ;
-; eZ80 suffixes
+; eZ80 addressing mode suffixes
+;
+; Fully qualified suffixes
 ;
 EZ80SFS_1:		DB	'LI','S'+80H,49H
 			DB	'SI','L'+80H,52H
 EZ80SFS_2:		DB	'SI','S'+80H,40H
-			DB	'LI','L'+80H,5BH			
+			DB	'LI','L'+80H,5BH
 ;
-			DB    0
+			DB	0
+;
+; Shortcuts when ADL mode is 0
+;
+EZ80SFS_ADL0:		DB	'S'+80H,40H		; Equivalent to .SIS
+			DB	'L'+80H,49H		; Equivalent to .LIS
+			DB	'I','S'+80H,40H		; Equivalent to .SIS
+			DB	'I','L'+80H,52H		; Equivalent to .SIL
+;
+			DB	0
+;
+; Shortcuts when ADL mode is 1
+;
+EZ80SFS_ADL1:		DB	'S'+80H,52H		; Equivalent to .SIL
+			DB	'L'+80H,5BH		; Equivalent to .LIL
+			DB	'I','S'+80H,49H		; Equivalent to .LIS
+			DB	'I','L'+80H,5BH		; Equivalent to .LIL
+;
+			DB	0
 ;
 ; .LIST
 ;
