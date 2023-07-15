@@ -1828,8 +1828,6 @@ SAVLO5:			CALL    CHECK
 DELIM:			LD      A,(IY)          ;ASSEMBLER DELIMITER
 			CP      ' '
 			RET     Z
-			CP	'.'
-			RET	Z
 			CP      ','
 			RET     Z
 			CP      ')'
@@ -2172,7 +2170,8 @@ OUTCH1:			JP      OUT_
 ; Register Usage: B: Type of most recent operand (the base value selected from the opcode table)
 ;                 C: Opcode beig built
 ;                 D: Flags
-;			Bit 7: Set to 1 if the instruction is an index instruction with offset
+;			Bit 7: Set to 1 if the instruction uses long addressing
+;			Bit 6: Set to 1 if the instruction is an index instruction with offset
 ;                 E: Offset from IX or IY
 ;                HL: Numeric operand value
 ;                IX: Code desination
@@ -2203,8 +2202,12 @@ ASMB1:			CALL    SKIP
 			LD      HL,OPCODS
 			CALL    FIND
 			RET     C
+			PUSH	AF
+			LD	A,(LISTON)
+			AND	80H
+			LD      D,A     		; Set the initial ADL mode
 			LD      C,B     		; Make a copy of the opcode in C
-			LD      D,0     		; Clear the flags
+			POP	AF 
 ;
 ; GROUP 0: Trivial cases requiring no computation
 ; GROUP 1: As Group 0, but with "ED" prefix
@@ -2536,7 +2539,7 @@ $$:			XOR     A
 ;
 EZ80SF:			LD	A,(IY)			; Check for a dot
 			CP	'.'
-			JR	Z, $F			; If preset, then carry on processing the eZ80 suffix
+			JR	Z,$F			; If preset, then carry on processing the eZ80 suffix
 			OR	A			; Reset the carry flag (no error)
 			RET				; And return
 $$:			INC	IY 			; Skip the dot
@@ -2548,10 +2551,9 @@ $$:			INC	IY 			; Skip the dot
 			POP	DE 
 			POP	BC 			; Restore the operand
 			RET
-
-ADDR_:			LD	A, (LISTON)		; Check the ADL flag (bit 7 of LISTON)
-			RLCA				; Shift bit 7 into the carry
-			JR	C, ADDR24 		; If it is set, then default to 24-bit addresses
+;
+ADDR_:			BIT	7,D			; Check the ADL flag
+			JR	NZ,ADDR24 		; If it is set, then use 24-bit addresses
 ;
 ADDR16:			CALL	NUMBER			; Fetch an address (16-bit) and fall through to VAL16
 VAL16:			CALL    VAL8			; Write out a 16-bit value (HL)
@@ -2606,7 +2608,7 @@ BIND:			CP      76H
 			SCF
 			RET     Z               	; Reject LD (HL),(HL)
 			CALL    BYTE_
-			BIT	7,D			; Check the index bit in flags
+			BIT	6,D			; Check the index bit in flags
 			RET     Z	
 			LD      A,E			; If there is an index, output the offset
 			JR      BYTE_
@@ -2625,7 +2627,7 @@ OPND:			PUSH    HL			; Preserve HL
 			RET     C			; Return if not found
 			BIT     7,B			; Check if it is an index register (IX, IY)
 			RET     Z			; Return if it isn't
-			SET	7,D			; Set flag to indicate we've got an index
+			SET	6,D			; Set flag to indicate we've got an index
 			BIT     3,B			; Check if an offset is required
 			PUSH    HL
 			CALL    Z,OFFSET		; If bit 3 of B is zero, then get the offset
@@ -2754,12 +2756,14 @@ FIND3:			BIT     7,(HL)			; Is this the end of token marker?
 FIND4:			POP     IY
 			JR      FIND1
 ;
-FIND5:			CALL    DELIM
-			CALL    NZ,SIGN
-			JR      NZ,FIND4
-FIND6:			LD      A,B
-			LD      B,(HL)
-			POP     HL
+FIND5:			CALL    DELIM			; Is it a delimiter?
+			CALL	NZ,DOT 			; No, so also check whether it is a dot character (for suffixes)
+			CALL    NZ,SIGN			; No, so also check whether it is a SIGN character ('+' or '-')
+			JR      NZ,FIND4		; If it is not a sign or a delimiter, then loop
+;
+FIND6:			LD      A,B			; At this point we have a token
+			LD      B,(HL)			; Fetch the token type code
+			POP     HL			; Restore the stack
 			RET
 ;
 SKIP0:			INC     HL
@@ -2770,10 +2774,13 @@ SKIP:			CALL    DELIM			; Is it a delimiter?
 			INC     IY			; Increment the basic program counter
 			JR      SKIP			; And loop
 ;
-SIGN:			CP      '+'
+SIGN:			CP      '+'			; Check whether the character is a sign symbol
 			RET     Z
 			CP      '-'
 			RET
+;
+DOT:			CP	'.'			; Check if it is a dot character
+			RET 
 
 ; Z80 opcode list
 ;
