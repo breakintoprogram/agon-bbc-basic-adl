@@ -2213,9 +2213,9 @@ ASMB1:			LD	A,(LISTON)		; Get the OPT flags
 ; GROUP 0: Trivial cases requiring no computation
 ; GROUP 1: As Group 0, but with "ED" prefix
 ;
-			SUB     46			; The number of opcodes in GROUP0 and GROUP1
+			SUB     68			; The number of opcodes in GROUP0 and GROUP1
 			JR      NC,GROUP02		; If not in that range, then check GROUP2
-			CP      15-46			; Anything between 15 and 46 (neat compare trick here)
+			CP      15-68			; Anything between 15 and 68 (neat compare trick here)
 			CALL    NC,ED			; Needs to be prefixed with ED
 			JR      BYTE0			; Then write the opcode byte
 ;
@@ -2819,6 +2819,7 @@ DOT:			CP	'.'			; Check if it is a dot character
 ; Z80 opcode list
 ;
 ; Group 0: (15 opcodes)
+; Trivial cases requiring no computation
 ;
 OPCODS:			DB	'NO','P'+80H,00h	; # 00h
 			DB	'RLC','A'+80H,07h
@@ -2836,7 +2837,8 @@ OPCODS:			DB	'NO','P'+80H,00h	; # 00h
 			DB	'D','I'+80H,F3H
 			DB	'E','I'+80H,FBH
 ;
-; Group 1: (31 opcodes)
+; Group 1: (53 opcodes)
+; As Group 0, but with an ED prefix
 ;
 			DB	'NE','G'+80H,44H	; 0Fh
 			DB	'IM',0,'0'+80H,46H
@@ -2848,37 +2850,59 @@ OPCODS:			DB	'NO','P'+80H,00h	; # 00h
 			DB	'IM',0,'2'+80H,5EH
 			DB	'RR','D'+80H,67H
 			DB	'MLT',0,'H','L'+80H,6CH
+			DB	'LD',0,'MB',0,'A'+80H,6DH
+			DB	'LD',0,'A',0,'M','B'+80H,6EH
 			DB	'RL','D'+80H,6FH
 			DB	'SL','P'+80H,76H
 			DB	'MLT',0,'S','P'+80H,7CH
 			DB	'STMI','X'+80H,7DH
 			DB	'RSMI','X'+80H,7EH
+			DB	'INI','M'+80H,82H
+			DB	'OTI','M'+80H,83H
+			DB	'INI','2'+80H,84H
+			DB	'IND','M'+80H,8AH
+			DB	'OTD','M'+80H,8BH
+			DB	'IND','2'+80H,8CH
+			DB	'INIM','R'+80H,92H
+			DB	'OTIM','R'+80H,93H
+			DB	'INI2','R'+80H,94H
+			DB	'INDM','R'+80H,9AH
+			DB	'OTDM','R'+80H,9BH
+			DB	'IND2','R'+80H,9CH
 			DB	'LD','I'+80H,A0H
 			DB	'CP','I'+80H,A1H
 			DB	'IN','I'+80H,A2H
-			DB	'OUT','I'+80H,A3H
+			DB	'OUTI','2'+80H,A4H	; These are swapped round so that FIND will find
+			DB	'OUT','I'+80H,A3H	; OUTI2 before OUTI
 			DB	'LD','D'+80H,A8H
 			DB	'CP','D'+80H,A9H
 			DB	'IN','D'+80H,AAH
-			DB	'OUT','D'+80H,ABH
+			DB	'OUTD','2'+80H,ACH	; Similarly these are swapped round so that FIND
+			DB	'OUT','D'+80H,ABH	; will find OUTD2 before OUTD
 			DB	'LDI','R'+80H,B0H
 			DB	'CPI','R'+80H,B1H
 			DB	'INI','R'+80H,B2H
 			DB	'OTI','R'+80H,B3H
+			DB	'OTI2','R'+80H,B4H
 			DB	'LDD','R'+80H,B8H
 			DB	'CPD','R'+80H,B9H
 			DB	'IND','R'+80H,BAH
 			DB	'OTD','R'+80H,BBH
+			DB	'OTD2','R'+80H,BCH
+			DB	'INIR','X'+80H,C2H
+			DB	'OTIR','X'+80H,C3H
+			DB	'INDR','X'+80H,CAH
+			DB	'OTDR','X'+80H,CBH
 ;
 ; Group 2: (3 opcodes)
 ;
-			DB	'BI','T'+80H,40H	; 2Eh
+			DB	'BI','T'+80H,40H	; 44h
 			DB	'RE','S'+80H,80H
 			DB	'SE','T'+80H,C0H
 ;
 ; Group 3: (7 opcodes)
 ;
-			DB	'RL','C'+80H,00H	; 31h
+			DB	'RL','C'+80H,00H	; 47h
 			DB	'RR','C'+80H,08H
 			DB	'R','L'+80H,10H
 			DB	'R','R'+80H,18H
@@ -2888,83 +2912,83 @@ OPCODS:			DB	'NO','P'+80H,00h	; # 00h
 ;
 ; Group 4: (3 opcodes)
 ;
-			DB	'PO','P'+80H,C1H	; 38h
+			DB	'PO','P'+80H,C1H	; 4Eh
 			DB	'PUS','H'+80H,C5H
 			DB	'EX',0,'(S','P'+80H,E3H
 ;
 ; Group 5: (7 opcodes)
 ;
-			DB	'SU','B'+80H,90H	; 3Bh
+			DB	'SU','B'+80H,90H	; 51h
 			DB	'AN','D'+80H,A0H
 			DB	'XO','R'+80H,A8H
 			DB	'O','R'+80H,B0H
 			DB	'C','P'+80H,B8H
-			DB	TAND,A0H		; 40h TAND: Tokenised AND
-			DB	TOR,B0H			; 41h TOR: Tokenised OR
+			DB	TAND,A0H		; 56h TAND: Tokenised AND
+			DB	TOR,B0H			; 57h TOR: Tokenised OR
 ;
 ; Group 6 (3 opcodes)
 ;
-			DB	'AD','D'+80H,80H	; 42h
+			DB	'AD','D'+80H,80H	; 58h
 			DB	'AD','C'+80H,88H
 			DB	'SB','C'+80H,98H
 ;
 ; Group 7: (2 opcodes)
 ;
-			DB	'IN','C'+80H,04H	; 45h
+			DB	'IN','C'+80H,04H	; 5Bh
 			DB	'DE','C'+80H,05H
 ;
 ; Group 8: (2 opcodes)
 ;
-			DB	'IN','0'+80H,00H	; 47h
+			DB	'IN','0'+80H,00H	; 5Dh
 			DB	'OUT','0'+80H,01H
 ;
 ; Group 9: (1 opcode)
 ;
-			DB	'I','N'+80H,40H		; 49h
+			DB	'I','N'+80H,40H		; 5Fh
 ;
 ; Group 10: (1 opcode)
 ;
-			DB	'OU','T'+80H,41H	; 4Ah
+			DB	'OU','T'+80H,41H	; 60h
 ;
 ; Group 11: (2 opcodes)
 ;
-			DB	'J','R'+80H,20H		; 4Bh
+			DB	'J','R'+80H,20H		; 61h
 			DB	'DJN','Z'+80H,10H
 ;
 ; Group 12: (1 opcode)
 ;
-			DB	'J','P'+80H,C2H		; 4Dh
+			DB	'J','P'+80H,C2H		; 63h
 ;
 ; Group 13: (1 opcode)
 ;
-			DB	'CAL','L'+80H,C4H	; 4Eh
+			DB	'CAL','L'+80H,C4H	; 64h
 ;
 ; Group 14: (1 opcode)
 ;
-			DB	'RS','T'+80H,C7H	; 4Fh
+			DB	'RS','T'+80H,C7H	; 65h
 ;
 ; Group 15: (1 opcode)
 ;
-			DB	'RE','T'+80H,C0H	; 50h
+			DB	'RE','T'+80H,C0H	; 66h
 ;
 ; Group 16: (1 opcode)
 ;
-			DB	'L','D'+80H,40H		; 51h
+			DB	'L','D'+80H,40H		; 67h
 ;
 ; Group 17: (1 opcode)
 ;
-			DB	'TS','T'+80H,04H	; 52h
+			DB	'TS','T'+80H,04H	; 68h
 
 ;
 ; Assembler Directives
 ;
-			DB	'OP','T'+80H,00H	; 53h OPT
-			DB	'AD','L'+80H,00H	; 54h ADL
+			DB	'OP','T'+80H,00H	; 69h OPT
+			DB	'AD','L'+80H,00H	; 6Ah ADL
 ;
-			DB	DEF_ & 7FH,'B'+80H,00H	; 55h Tokenised DEF + B
-			DB	DEF_ & 7FH,'W'+80H,00H	; 56h Tokenised DEF + W
-			DB	DEF_ & 7FH,'L'+80H,00H	; 57h Tokenised DEF + L
-			DB 	DEF_ & 7FH,'M'+80H,00H	; 58h Tokenised DEF + M
+			DB	DEF_ & 7FH,'B'+80H,00H	; 6Bh Tokenised DEF + B
+			DB	DEF_ & 7FH,'W'+80H,00H	; 6Ch Tokenised DEF + W
+			DB	DEF_ & 7FH,'L'+80H,00H	; 6Dh Tokenised DEF + L
+			DB 	DEF_ & 7FH,'M'+80H,00H	; 6Eh Tokenised DEF + M
 ;
 			DB	0
 ;			
