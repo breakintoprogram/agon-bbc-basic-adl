@@ -2186,8 +2186,10 @@ ASMB:			CP      '.'			; Check for a dot; this indicates a label
 			CALL    VAR_			; Create a variable
 			PUSH    AF
 			CALL    ZERO			; Zero it
+			LD	A,(PC+2)
+			LD	L,A			; The MSB of the 24-bit address
 			EXX
-			LD      HL,(PC)			; TODO: This stores the PC in HL and looks 16-bit to me
+			LD      HL,(PC)			; The LSW of the 24-bit address (only 16-bits used)
 			EXX
 			POP     AF
 			CALL    STORE			; Store the program counter
