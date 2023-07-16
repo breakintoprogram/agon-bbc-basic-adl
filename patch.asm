@@ -644,6 +644,7 @@ OSSAVE_TXT1:		LD	A, (HL)			; Check for end of program marker
 			OR	A		
 			JR	Z, OSSAVE_TXT2
 			INC	HL			; Skip the length byte
+			LD	DE, 0			; Clear DE to ensure we get a 16-bit line number
 			LD	E, (HL)			; Get the line number
 			INC	HL
 			LD	D, (HL)
