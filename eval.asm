@@ -1185,7 +1185,7 @@ MIDS1:			CALL    NXT
 ;Result is string.
 ;
 LEFTS:			CALL    EXPRSC
-LEFT1:			CALL    PUSHS           ;SAVE STRING ON STACK
+LEFT1:			CALL    PUSHS           	; Push the string onto the stack
 			CALL    EXPRI
 			POP     BC
 			CALL    POPS
@@ -1195,9 +1195,9 @@ LEFT1:			CALL    PUSHS           ;SAVE STRING ON STACK
 			EXX
 			CP      E
 			JR      NC,LEFT3
-			LD      L,E             ;FOR RIGHTS
+			LD      L,E             	; For RIGHTS
 LEFT2:			LD      E,A
-LEFT3:			LD      A,80H           ;STRING MARKER
+LEFT3:			LD      A,80H           	; String marker
 			RET
 ;
 ;RIGHT$ - Return right part of string.
@@ -1215,14 +1215,14 @@ RIGHTS:			CALL    LEFTS
 RIGHT1:			LD      B,0
 			LD      H,D
 			LD      E,B
-			LDIR                    ;MOVE
+			LDIR                    	; Move
 			LD      A,80H
 			RET
 ;
 ;STRINGS - Return n concatenations of a string.
 ;Result is string.
 ;
-STRING_:			CALL    EXPRI
+STRING_:		CALL    EXPRI
 			CALL    COMMA
 			EXX
 			LD      A,L
@@ -1430,52 +1430,51 @@ SCP3:			OR      A
 			INC     C
 			RET
 ;
-;PUSHS - SAVE STRING ON STACK.
-;    Inputs: String in string accumulator.
-;            E = string length.
-;            A - saved on stack.
-;  Destroys: B,C,D,E,H,L,IX,SP,F
+; PUSHS - SAVE STRING ON STACK.
+;     Inputs: String in string accumulator.
+;             E = string length.
+;             A - saved on stack.
+;   Destroys: B,C,D,E,H,L,IX,SP,F
 ;
-PUSHS:			CALL    CHECK
+PUSHS:			CALL    CHECK			; Check if there is sufficient space on the stack
 			POP     IX              	; IX: Return address
 			OR      A               	; Clear the carry flag
-;			
-			LD	B,E 			;  B: Temporary store for the string length
+			LD	BC,0			; BC: Length of the string
+			LD	C,E
 			LD      HL,ACCS			; HL: Pointer to the string accumulator
 			LD	DE,ACCS
-			LD	E,B 			; DE: Pointer to the end of the string
-			LD	BC, 0			; BC: 0
-;
-			SBC     HL,DE			; Reserve some space on the stack
-			ADD     HL,SP
-			LD      SP,HL		
-			LD      D,A			; DE: Length of the string
-			PUSH    DE
+			LD	E,C 			; DE: Pointer to the end of the string in the accumulator
+			SBC     HL,DE			; HL: Number of bytes to reserve on the stack (a negative number)
+			ADD     HL,SP			; Grow the stack
+			LD      SP,HL
+			LD      D,A			; Stack A and E (the string length)
+			PUSH    DE			; Note that this stacks 3 bytes, not 2; the MSB is irrelevant
 			JR      Z,PUSHS1        	; Is it zero length?
-			LD      C,E			;  C: Number of bytes to copy
 			LD      DE,ACCS			; DE: Destination
 			EX      DE,HL			; HL: Destination, DE: Address on stack
 			LDIR	                    	; Copy to stack
-			CALL    CHECK
-PUSHS1:			JP      (IX)            	; And return
+			CALL    CHECK			; Final check to see if there is sufficient space on the stack
+PUSHS1:			JP      (IX)            	; Effectively "RET" (IX contains the return address)
 ;
-;POPS - RESTORE STRING FROM STACK.
-;    Inputs: C = string length.
-;   Outputs: String in string accumulator.
-;            E = string length.
-;  Destroys: B,C,D,E,H,L,IX,SP,F
+; POPS - RESTORE STRING FROM STACK.
+;     Inputs: C = string length.
+;    Outputs: String in string accumulator.
+;             E = string length.
+;   Destroys: B,C,D,E,H,L,IX,SP,F
 ;
-POPS:			POP     IX              ;RETURN ADDRESS
-			LD      HL,0
-			LD      B,H             ;B=0
-			ADD     HL,SP
-			LD      DE,ACCS
-			INC     C
+POPS:			POP     IX              	; IX: Return address
+			LD	L,C			; Temporarily store string length in L
+			LD	BC,0
+			LD	C,L			; BC: Number of bytes to copy
+			LD      HL,0			; HL: 0
+			ADD     HL,SP			; HL: Stack address
+			LD      DE,ACCS			; DE: Destination
+			INC     C			; Quick check to see if this is a zero length string
 			DEC     C
-			JR      Z,POPS1         ;ZERO LENGTH
-			LDIR                    ;COPY FROM STACK
-POPS1:			LD      SP,HL
-			JP      (IX)            ;"RETURN"
+			JR      Z,POPS1         	; Yes it is, so skip
+			LDIR                    	; No, so copy from the stack
+POPS1:			LD      SP,HL			; Shrink the stack
+			JP      (IX)            	; Effectively "RET" (IX contains the return address)
 ;
 HEXDIG:			LD      A,(IY)
 			CP      '0'
