@@ -1135,10 +1135,10 @@ GETS:			CALL	NXT		;NEW CODE FOR GET$(X,Y)
 GET1:			SCF
 			JR      INKEY1
 ;
-;INKEYS - Wait up to n centiseconds for keypress.
-;         Return key pressed as string or null
-;         string if time elapsed.
-;Result is string.
+; INKEYS - Wait up to n centiseconds for keypress.
+;          Return key pressed as string or null
+;          string if time elapsed.
+; Result is string.
 ;
 INKEYS:			CALL    ITEMI
 			EXX
@@ -1150,8 +1150,8 @@ INKEY1:			LD      DE,ACCS
 			INC     E
 			RET
 ;
-;MID$ - Return sub-string.
-;Result is string.
+; MID$ - Return sub-string.
+; Result is string.
 ;
 MIDS:			CALL    EXPRSC
 			CALL    PUSHS           ;SAVE STRING ON STACK
@@ -1180,35 +1180,35 @@ MIDS1:			CALL    NXT
 			LD      A,80H
 			RET
 ;
-;LEFT$ - Return left part of string.
-;Carry cleared if entire string returned.
-;Result is string.
+; LEFT$ - Return left part of string.
+; Carry cleared if entire string returned.
+; Result is string.
 ;
-LEFTS:			CALL    EXPRSC
-LEFT1:			CALL    PUSHS           	; Push the string onto the stack
-			CALL    EXPRI
-			POP     BC
-			CALL    POPS
-			CALL    BRAKET
+LEFTS:			CALL    EXPRSC			; Get the first string expression
+LEFT1:			CALL    PUSHS           	; Push the string onto the stack from the string accumulator (ACCS)
+			CALL    EXPRI			; Get the second expression
+			POP     BC			; C: String length, B: Value of A before PUSHS was called
+			CALL    POPS			; Pop the string back off the stack to the string accumulator (ACCS)
+			CALL    BRAKET			; Check for closing bracket
 			EXX
-			LD      A,L
+			LD      A,L			; L: The second parameter
 			EXX
-			CP      E
-			JR      NC,LEFT3
-			LD      L,E             	; For RIGHTS
-LEFT2:			LD      E,A
+			CP      E			; Compare with the string length
+			JR      NC,LEFT3		; If it is greater than or equal then do nothing
+			LD      L,E             	; For RIGHTS, no effect in LEFTS
+LEFT2:			LD      E,A			; E: The new length of string
 LEFT3:			LD      A,80H           	; String marker
 			RET
 ;
-;RIGHT$ - Return right part of string.
-;Result is string.
+; RIGHT$ - Return right part of string.
+; Result is string.
 ;
-RIGHTS:			CALL    LEFTS
-			RET     NC
-			INC     E
+RIGHTS:			CALL    LEFTS			; Call LEFTS to get the string
+			RET     NC			; Do nothing if the second parameter is >= string length
+			INC     E			; Check for a zero length string
 			DEC     E
-			RET     Z
-			LD      C,E
+			RET     Z			; Yes, so do nothing
+			LD      C,E			; C: Second parameter
 			LD      A,L
 			SUB     E
 			LD      L,A
@@ -1219,37 +1219,36 @@ RIGHT1:			LD      B,0
 			LD      A,80H
 			RET
 ;
-;STRINGS - Return n concatenations of a string.
-;Result is string.
+; STRINGS - Return n concatenations of a string.
+; Result is string.
 ;
-STRING_:		CALL    EXPRI
-			CALL    COMMA
+STRING_:		CALL    EXPRI			; Get number of times to replicate
+			CALL    COMMA			; Check for comma
 			EXX
-			LD      A,L
+			LD      A,L			; L: Number of iterations of string
 			EXX
 			PUSH    AF
-			CALL    EXPRS
-			CALL    BRAKET
-			POP     AF
-			OR      A
-			JR      Z,LEFT2         ;N=0
+			CALL    EXPRS			; Get the string
+			CALL    BRAKET			; Check for closing bracket
+			POP     AF			; A: Number of iterations of string
+			OR      A			; Set flags
+			JR      Z,LEFT2         	; If iterations is 0, then this will return an empty string
 			DEC     A
-			LD      C,A
-			LD      A,80H           ;STRING MARKER
+			LD      C,A			; C: Loop counter
+			LD      A,80H			; String marker
 			RET     Z
-			INC     E
+			INC     E			; Check for empty string
 			DEC     E
-			RET     Z               ;NULL STRING
-			LD      B,E
-			LD      H,D
-			LD      L,0
+			RET     Z              		; And return
+			LD      B,E			; B: String length tally
+			LD	HL,ACCS
 STRIN1:			PUSH    BC
 STRIN2:			LD      A,(HL)
 			INC     HL
 			LD      (DE),A
 			INC     E
 			LD      A,19
-			JP      Z,ERROR_         ;"String too long"
+			JP      Z,ERROR_         	; Throw a "String too long" error
 			DJNZ    STRIN2
 			POP     BC
 			DEC     C
