@@ -583,16 +583,22 @@ CON:			PUSH    IY
 			XOR     A
 			RET
 ;
-LOADS:			LD      DE,ACCS
+LOADS:			LD      DE,ACCS			; Where to store the string
 			RRA
-			JR      NC,LOADS2       ;FIXED STRING
-			CALL    LOAD4
+			JR      NC,LOADS2       	; Skip if it is a fixed string
+;
+			EXX				; This block was a call to LOAD4
+			LD      L,(IX+0)		; The length of the string currently stored in the allocated space
+			LD      H,(IX+1)		; The maximum original string length
+			EXX
+			LD	HL,(IX+2)		; Address of the string (24-bit)
+;
 			EXX
 			LD      A,L
 			EXX
 			OR      A
 			LD      C,A
-			LD      A,80H           ;STRING MARKER
+			LD      A,80H           	; String marker
 			RET     Z
 			LD      B,0
 			LDIR
@@ -601,11 +607,11 @@ LOADS2:			LD      A,(HL)
 			LD      (DE),A
 			INC     HL
 			CP      CR
-			LD      A,80H           ;STRING MARKER
+			LD      A,80H           	; String marker
 			RET     Z
 			INC     E
 			JR      NZ,LOADS2
-			RET                     ;RETURN NULL STRING
+			RET                     	; Return null string
 ;
 ;VARIABLE-TYPE FUNCTIONS:
 ;
@@ -1431,31 +1437,27 @@ SCP3:			OR      A
 ;  Destroys: B,C,D,E,H,L,IX,SP,F
 ;
 PUSHS:			CALL    CHECK
-			POP     IX              ;RETURN ADDRESS
-			OR      A               ;CLEAR CARRY
-;
-			LD	L,E		;Store E
-			LD	DE,0		
-			LD	E,L 		
-			LD	HL,0
-			LD	BC,0		;BC=0
+			POP     IX              	; IX: Return address
+			OR      A               	; Clear the carry flag
 ;			
-;			LD      HL,ACCS
-;			LD      D,H
-;			LD      B,L             ;B=0
+			LD	B,E 			;  B: Temporary store for the string length
+			LD      HL,ACCS			; HL: Pointer to the string accumulator
+			LD	DE,ACCS
+			LD	E,B 			; DE: Pointer to the end of the string
+			LD	BC, 0			; BC: 0
 ;
-			SBC     HL,DE
+			SBC     HL,DE			; Reserve some space on the stack
 			ADD     HL,SP
-			LD      SP,HL
-;			LD      D,A
+			LD      SP,HL		
+			LD      D,A			; DE: Length of the string
 			PUSH    DE
-			JR      Z,PUSHS1        ;ZERO LENGTH
-			LD      C,E
-			LD      DE,ACCS
-			EX      DE,HL
-			LDIR                    ;COPY TO STACK
+			JR      Z,PUSHS1        	; Is it zero length?
+			LD      C,E			;  C: Number of bytes to copy
+			LD      DE,ACCS			; DE: Destination
+			EX      DE,HL			; HL: Destination, DE: Address on stack
+			LDIR	                    	; Copy to stack
 			CALL    CHECK
-PUSHS1:			JP      (IX)            ;"RETURN"
+PUSHS1:			JP      (IX)            	; And return
 ;
 ;POPS - RESTORE STRING FROM STACK.
 ;    Inputs: C = string length.

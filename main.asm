@@ -1728,7 +1728,7 @@ TYPE_:			LD      A,(IY-1)		; Check the string type postfix
 ;
 ; The variable is undefined at this point; HL will be zero
 ;
-LOC6:			INC     A               		; Set NZ flag
+LOC6:			INC     A               	; Set NZ flag
 			RET
 ;
 ; CREATE - CREATE NEW ENTRY, INITIALISE TO ZERO.
@@ -1737,17 +1737,17 @@ LOC6:			INC     A               		; Set NZ flag
 ; Destroys: As LOCATE, GETDEF.
 ;
 CREATE:			XOR     A				
-			LD      DE,(FREE)			; Get the last byte of available RAM
-			LD	(HL), DE			; Store 
+			LD      DE,(FREE)		; Get the last byte of available RAM
+			LD	(HL), DE		; Store 
 			EX      DE,HL
-			LD      (HL),A				; Clear the link of the new entity
+			LD      (HL),A			; Clear the link of the new entity
 			INC     HL
 			LD      (HL),A
 			INC     HL
 			LD      (HL),A
 			INC     HL
 LOC7:			INC     IY
-			CALL    RANGE           ;END OF VARIABLE?
+			CALL    RANGE           	; END OF VARIABLE?
 			JR      C,LOC8
 			LD      (HL),A
 			INC     HL
@@ -1759,20 +1759,20 @@ LOC7:			INC     IY
 			CP      '('
 			JR      Z,LOC7
 			INC     IY
-LOC8:			LD      (HL),0          ;TERMINATOR
+LOC8:			LD      (HL),0          	; TERMINATOR
 			INC     HL
 			PUSH    HL
-			CALL    TYPE_
-			LD      A,5
+			CALL    TYPE_			; Get the variable type in D
+			LD      A,4			; If it is an integer then it takes up 4 bytes
 			CP      D
-			JR      Z,LOC9
-			DEC     A
-LOC9:			LD      (HL),0          ;INITIALISE TO ZERO
+			JR      Z,LOC9			; So skip the next bit
+			INC     A			; Strings and floats take up 5 bytes (NB: Strings take up 4 in BBC BASIC for Z80)
+LOC9:			LD      (HL),0          	; Initialise the memory to zero
 			INC     HL
 			DEC     A
 			JR      NZ,LOC9
-			LD      (FREE),HL
-			CALL    CHECK
+			LD      (FREE),HL		; Adjust the stack
+			CALL    CHECK			; Check whether we are out of space
 			POP     HL
 			XOR     A
 			RET

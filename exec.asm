@@ -345,16 +345,17 @@ LET0:			CP      ELSE_-TCMD
 			CP      ('['-TCMD) & 0FFH
 			JR      Z,ASM
 			DEC     IY
-LET:			CALL    ASSIGN
-			JP      Z,XEQ
-			JR      C,SYNTAX        ;"Syntax error"
-			PUSH    AF              ;SAVE STRING TYPE
-			CALL    EQUALS
-			PUSH    HL
+LET:			CALL    ASSIGN			; Assign the variable
+			JP      Z,XEQ			; Return if Z as it is a numeric variable that has been assigned in ASSIGN
+			JR      C,SYNTAX        	; Return if C as it is an illegal variable
+;
+			PUSH    AF              	; At this point we're dealing with a string type (A=81h)
+			CALL    EQUALS			; Check if the variable is followed by an '=' symbol; this will throw a 'Mistake' error if not
+			PUSH    HL			; HL: Address of the variable
 			CALL    EXPRS
-			POP     IX
-			POP     AF
-			CALL    STACCS
+			POP     IX			; IX: Address of the variable
+			POP     AF			; AF: The variable type
+			CALL    STACCS			; Copy the string from ACCS to the variable area
 XEQR:			JP      XEQ
 ;
 ASM0:			CALL    NEWLIN
@@ -1577,20 +1578,20 @@ PUT:			CALL    EXPRI           ;PORT ADDRESS
 ;          NC, NZ - OK, string.
 ;           C, NZ - illegal
 ;
-ASSIGN:			CALL    GETVAR          ;VARIABLE
-			RET     C               ;ILLEGAL VARIABLE
-			CALL    NZ,PUTVAR
+ASSIGN:			CALL    GETVAR          	; Try to get the variable
+			RET     C               	; Return with C if it is an illegal variable
+			CALL    NZ,PUTVAR		; If it does not exist, then create the variable
 			OR      A
-			RET     M               ;STRING VARIABLE
-			PUSH    AF              ;NUMERIC TYPE
-			CALL    EQUALS
+			RET     M               	; Return if type is string (81h)
+			PUSH    AF              	; It's a numeric type from this point on
+			CALL    EQUALS			; Check if the variable is followed by an '=' symbol; this will throw a 'Mistake' error if not
 			PUSH    HL
 			CALL    EXPRN
 			POP     IX
 			POP     AF
 STORE:			BIT     0,A
 			JR      Z,STOREI
-			CP      A               ;SET ZERO
+			CP      A               	; Set the variable to 0
 STORE5:			LD      (IX+4),C
 STORE4:			EXX
 			LD      (IX+0),L
@@ -1612,46 +1613,89 @@ STORE1:			EXX
 			EXX
 			RET
 ;
-STACCS:			LD      HL,ACCS
-STORES:			RRA
-			JR      NC,STORS3       ;FIXED STRING
+; Copy a string from the string accumulator to variable storage on the stack
+; Parameters:
+; - AF: The variable type (should be 81h for a string, 80h for a fixed/static string)
+; - IX: Address of the variable storage on the stack
+;
+STACCS:			LD      HL,ACCS			; HL: Pointer to the string accumulator
+;
+; Parameters:
+; As above, but:
+; - HL: Address of the string to be stored
+; -  E: The string length
+; NB:
+; Strings are mutable
+; Strings are stored in the following format in the variable:
+; - Address of the next variable (3 bytes)
+; - The rest of the variable name - this is zero terminated
+; - Current string length (byte)
+; - Maximum (original) string length (byte)
+; - String start address (3 bytes for BBC BASIC for eZ80, 2 bytes for standard BBC BASIC for Z80)
+; See https://www.bbcbasic.co.uk/bbcbasic/mancpm/annexd.html#string for more details
+;
+STORES:			RRA				; Rotate right to shift bit 0 into carry
+			JR      NC,STORS3		; It's a fixed/static string, so skip the next bit
+			PUSH    HL			; Stack ACCS
+;
+; Load the string pointer and lengths into registers - these are all zeroed for new strings
+;
+			EXX				; This block was a call to LOAD4
+			LD      L,(IX+0)		; The length of the string currently stored in the allocated space
+			LD      H,(IX+1)		; The maximum original string length
+			EXX
+			LD	HL,(IX+2)		; Address of the string (24-bit)
+;
+			LD      A,E             	; E : Length of string in ACCS (as passed to the function)
+			EXX
+			LD      L,A			; L': Length of string currently stored on the stack
+			LD      A,H             	; H': The maximum (original) string length
+			EXX
+			CP      E			; Check whether there is enough room for the string in ACCS in the allocated space
+			JR      NC,STORS1       	; Yes there is, so skip the next bit
+;
+; At this point we're either initialising a new string or assigning more memory to an existing string
+; Note that there is no garbage collection here, so if a string is reassigned and the new string is longer
+; then the existing and new strings may both exist in memory.
+;
+			EXX
+			LD      H,L			; H: Set the maximum string length to the string length
+			EXX
 			PUSH    HL
-			CALL    LOAD4
-			LD      A,E             ;LENGTH OF STRING
-			EXX
-			LD      L,A
-			LD      A,H             ;LENGTH ALLOCATED
-			EXX
-			CP      E
-			JR      NC,STORS1       ;ENOUGH ROOM
-			EXX
-			LD      H,L
-			EXX
-			PUSH    HL
-;			LD      B,0
-			LD	BC, 0
-			LD      C,A
-			ADD     HL,BC
+			LD	BC, 0			
+			LD      C,A			; BC: The maximum (original) string length
+			ADD     HL,BC			; Work out whether this is the last string in memory
 			LD      BC,(FREE)
-			SBC     HL,BC           ;IS STRING LAST?
+			SBC     HL,BC			; Is string last?
 			POP     HL
 			SCF
 			JR      Z,STORS1
-;			LD      H,B
-;			LD      L,C
-			LD	HL, BC
-STORS1:			CALL    STORE4          ;PRESERVES CARRY!
-;			LD      B,0
+			LD	HL, BC			; HL=BC
+; 
+; At this point carry flag will be clear if the string can be replaced in memory, otherwise will be set
+; - H': The maximum (original) string length
+; - L': The actual string length (must be less than H')
+; - HL: Address of the string in memory
+;
+STORS1:			EXX				; This block was a call to STORE4
+			LD      (IX+0),L		; The actual string length (must be less then H')
+			LD      (IX+1),H		; The maximum (original) string length
+			EXX
+			LD	(IX+2),HL		; The pointer to the original string
+;			
 			LD	BC, 0
-			LD      C,E
+			LD      C,E			; BC: The new string length
 			EX      DE,HL
 			POP     HL
-			DEC     C
-			INC     C
-			RET     Z               ;NULL STRING
-			LDIR
-			RET     NC              ;STRING REPLACED
-			LD      (FREE),DE
+			DEC     C			; Strings can only be 255 bytes long, so this is a quick way to
+			INC     C			; check whether BC is 0 without affecting the carry flag
+			RET     Z               	; It is, so it's a NULL string, don't need to do anything else here
+			LDIR				; Replace the string in memory
+			RET     NC
+			LD      (FREE),DE		; Set the new value of FREE and fall through to CHECK
+;
+; Check whether the stack is full
+;
 CHECK:			PUSH    HL
 			LD      HL,(FREE)
 			INC     H
@@ -1659,7 +1703,7 @@ CHECK:			PUSH    HL
 			POP     HL
 			RET     C
 			XOR     A
-			JP      ERROR_		; Throw error "No room"
+			JP      ERROR_			; Throw error "No room"
 ;
 STORS3:			LD      C,E
 			PUSH    IX
