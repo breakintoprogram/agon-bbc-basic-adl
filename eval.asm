@@ -1153,31 +1153,31 @@ INKEY1:			LD      DE,ACCS
 ; MID$ - Return sub-string.
 ; Result is string.
 ;
-MIDS:			CALL    EXPRSC
-			CALL    PUSHS           ;SAVE STRING ON STACK
-			CALL    EXPRI
-			POP     BC
-			CALL    POPS
+MIDS:			CALL    EXPRSC			; Get the first string expression
+			CALL    PUSHS           	; Push the string onto the stack from the string accumulator (ACCS)
+			CALL    EXPRI			; Get the second expression
+			POP     BC			; C: String length, B: Value of A before PUSHS was called
+			CALL    POPS			; Pop the string back off the stack to the string accumulator
 			EXX
-			LD      A,L
+			LD      A,L			; A: The start index
 			EXX
-			OR      A
+			OR      A			; If the start index is 0, then we don't need to do the next bit
 			JR      Z,MIDS1
-			DEC     A
-			LD      L,A
-			SUB     E
-			LD      E,0
-			JR      NC,MIDS1
-			NEG
-			LD      C,A
-			CALL    RIGHT1
-MIDS1:			CALL    NXT
-			CP      ','
-			INC     IY
-			JR      Z,LEFT1
-			DEC     IY
-			CALL    BRAKET
-			LD      A,80H
+			DEC     A			
+			LD      L,A			; L: The start index - 1
+			SUB     E			; Subtract from the string length
+			LD      E,0			; Preemptively set the string length to 0
+			JR      NC,MIDS1		; If the first parameter is greater than the string length, then do nothing
+			NEG				; Negate the answer and
+			LD      C,A			; C: Number of bytes to copy
+			CALL    RIGHT1			; We can do a RIGHT$ at this point with the result
+MIDS1:			CALL    NXT			; Skip whitespace
+			CP      ','			; Check for a comma
+			INC     IY			; Advance to the next character in the BASIC line
+			JR      Z,LEFT1			; If there is a comma then we do a LEFT$ on the remainder
+			DEC     IY			; Restore the BASIC program pointer
+			CALL    BRAKET			; Check for a bracket
+			LD      A,80H			; String marker
 			RET
 ;
 ; LEFT$ - Return left part of string.
@@ -1208,15 +1208,19 @@ RIGHTS:			CALL    LEFTS			; Call LEFTS to get the string
 			INC     E			; Check for a zero length string
 			DEC     E
 			RET     Z			; Yes, so do nothing
-			LD      C,E			; C: Second parameter
+			LD      C,E			;  C: Number of bytes to copy
 			LD      A,L
 			SUB     E
-			LD      L,A
-RIGHT1:			LD      B,0
-			LD      H,D
-			LD      E,B
-			LDIR                    	; Move
-			LD      A,80H
+			LD      L,A			;  L: Index into the string
+RIGHT1:			LD	A,C
+			LD	BC,0
+			LD	C,A			; BC: Number of bytes to copy (with top word cleared)
+			LD	A,L
+			LD	HL,ACCS
+			LD	L,A			; HL: Source (in ACCS)
+			LD      DE,ACCS			; DE: Destination (start of ACCS)
+			LDIR                    	; Copy
+			LD      A,80H			; String marker
 			RET
 ;
 ; STRINGS - Return n concatenations of a string.
