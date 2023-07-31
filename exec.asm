@@ -2033,24 +2033,25 @@ SRCH2:			DEC     HL              	; Token not found, so back up to the CR at the
 			RET
 
 ; Multiply by 4 or 5
+; This function is used to allocate space for dimensioned variables
 ; This is a 24-bit operation
 ; - DE: Number to multiple
-; -  A: 4 or 5
+; -  A: 04h (Integer) - takes up 4 bytes
+;       05h (Float)   - takes up 5 bytes
+;       81h (String)  - takes up 5 bytes - this is different from BBC BASIC for Z80 where strings only take up 4 bytes
 ; Returns:
-; - DE: Multiplied by 5 if A = 5, otherwise multiplies by 4
+; - DE: Multiplied by 4 if A = 4, otherwise multiplies by 5
 ; -  F: Carry if overflow
 ; Corrupts:
 ; - HL
-X4OR5:			CP      5			; Check A = 5 (Z flag is used later)
-;			LD      H,D			; HL = DE
-;			LD      L,E
+X4OR5:			CP      4			; Check A = 4 (Z flag is used later)
 			LD	HL, DE
 			ADD     HL,HL			; Multiply by 2 (note this operation preserves the zero flag)
 			RET     C			; Exit if overflow
 			ADD     HL,HL			; Multiply by 2 again
 			RET     C			; Exit if overflow
 			EX      DE,HL			; DE: Product
-			RET     NZ			; Exit if A <> 5 
+			RET     Z			; Exit if A = 4
 			ADD     HL,DE			; Add original value to HL (effectively multiplying by 5)
 			EX      DE,HL			; DE: Product
 			RET

@@ -599,10 +599,10 @@ LOADS:			LD      DE,ACCS			; Where to store the string
 			LD      A,L
 			EXX
 			OR      A
+			LD	BC,0			; BC: Number of bytes to copy
 			LD      C,A
 			LD      A,80H           	; String marker
 			RET     Z
-			LD      B,0
 			LDIR
 			RET
 LOADS2:			LD      A,(HL)
