@@ -1022,85 +1022,94 @@ RND7:			RES     7,H             ;POSITIVE 0-0.999999
 			CALL    SFIX
 			JP      ADD1
 ;
-;INSTR - String search.
-;Result is integer numeric.
+; INSTR - String search.
+; Result is integer numeric.
 ;
-INSTR:			CALL    EXPRSC          ;STRING TO SEARCH
-			CALL    PUSHS           ;SAVE STRING ON STACK
-			CALL    EXPRS           ;SUB-STRING
-			POP     BC
+INSTR:			CALL    EXPRSC			; Get the first string expression
+			CALL    PUSHS           	; Push the string onto the stack
+			CALL    EXPRS           	; Get the second string expression
+			POP     BC			;  C: String length, B: Value of A before PUSHS was called
 			LD      HL,0
-			ADD     HL,SP           ;HL ADDRESSES MAIN
-			PUSH    BC              ;C = MAIN STRING LENGTH
-			LD      B,E             ;B = SUB-STRING LENGTH
-			CALL    NXT
-			CP      ','
-			LD      A,0
-			JR      NZ,INSTR1
-			INC     IY              ;SKIP COMMA
-			PUSH    BC              ;SAVE LENGTHS
-			PUSH    HL              ;SAVE MAIN ADDRESS
-			CALL    PUSHS
-			CALL    EXPRI
-			POP     BC
-			CALL    POPS
-			POP     HL              ;RESTORE MAIN ADDRESS
-			POP     BC              ;RESTORE LENGTHS
+			ADD     HL,SP           	; HL: Pointer to main string
+			PUSH    BC              	;  C: Main string length
+			LD      B,E             	;  B: Sub-string length
+			CALL    NXT			; Skip whitespace
+			CP      ','			; Check if there is a comma for the third parameter
+			LD      A,0			;  A: Default start position in string
+			JR      NZ,INSTR1		; No, so skip the next bit
+			INC     IY              	; Skip the comma
+			PUSH    BC              	; Save the lengths
+			PUSH    HL              	; Save the pointer to the main string
+			CALL    PUSHS			; Push the string onto the stack
+			CALL    EXPRI			; Get the third (numeric) parameter - the starting position
+			POP     BC			;  C: String length, B: Value of A before PUSHS was called (discarded)
+			CALL    POPS			; Pop the string off the stack
+			POP     HL              	; Restore the pointer to the main string
+			POP     BC              	; Restore the lengths
 			EXX
-			LD      A,L
+			LD      A,L			; A: The start position in the  string
 			EXX
-			OR      A
-			JR      Z,INSTR1
+			OR      A			; Set the flags
+			JR      Z,INSTR1		; If it is zero, then skip
 			DEC     A
-INSTR1:			LD      DE,ACCS         ;DE ADDRESSES SUB
-			CALL    SEARCH
+INSTR1:			LD      DE,ACCS         	; DE: Pointer to the sub string
+			CALL    SEARCH			; Do the search
 			POP     DE
-			JR      Z,INSTR2        ;N.B. CARRY CLEARED
+			JR      Z,INSTR2        	; NB: Carry cleared
 			SBC     HL,HL
 			ADD     HL,SP
 INSTR2:			SBC     HL,SP
 			EX      DE,HL
-			LD      H,0
+			LD	A,L
+			LD      HL,0
+			LD	L,A
 			ADD     HL,SP
 			LD      SP,HL
 			EX      DE,HL
-			CALL    BRAKET
-			JP      COUNT1
+			CALL    BRAKET			; Check for closing bracket
+			JP      COUNT1			; Return a numeric integer
 ;
-;SEARCH - Search string for sub-string
-;   Inputs: Main string at HL length C
-;           Sub-string  at DE length B
-;           Starting offset A
-;  Outputs: NZ - not found
-;           Z - found at location HL-1
-;           Carry always cleared
+; SEARCH - Search string for sub-string
+;    Inputs: Main string at HL length C
+;            Sub-string  at DE length B
+;            Starting offset A
+;   Outputs: NZ - not found
+;            Z - found at location HL-1
+;            Carry always cleared
 ;
-SEARCH:		PUSH    BC
-			LD      B,0
+SEARCH:			PUSH    BC			; Add the starting offset to HL
+			LD      BC,0
 			LD      C,A
-			ADD     HL,BC           ;NEW START ADDRESS
+			ADD     HL,BC           	; New start address
 			POP     BC
-			SUB     C
+			SUB     C			; If the starting offset > main string length, then do nothing
 			JR      NC,SRCH4
 			NEG
-			LD      C,A             ;REMAINING LENGTH
-SRCH1:			LD      A,(DE)
-			PUSH    BC
-			LD      B,0
-			CPIR                    ;FIND FIRST CHARACTER
+			LD      C,A             	; Remaining length
+;
+SRCH1:			PUSH    BC
+			LD	A,C
+			LD	BC,0
+			LD	C,A
+			LD      A,(DE)
+			CPIR                    	; Find the first character
 			LD      A,C
 			POP     BC
 			JR      NZ,SRCH4
 			LD      C,A
-			DEC     B               ;Bug fix
-			CP      B               ;Bug fix
-			INC     B               ;Bug fix
-			JR      C,SRCH4         ;Bug fix
+;
+; This block of four instructions was commented as a bug fix by R.T.Russell
+;
+			DEC     B			; Bug fix
+			CP      B			; Bug fix
+			INC     B			; Bug fix
+			JR      C,SRCH4			; Bug fix
+;			
 			PUSH    BC
 			PUSH    DE
 			PUSH    HL
 			DEC     B
-			JR      Z,SRCH3         ;FOUND !
+			JR      Z,SRCH3         	; Found!
 SRCH2:			INC     DE
 			LD      A,(DE)
 			CP      (HL)
@@ -1111,11 +1120,11 @@ SRCH3:			POP     HL
 			POP     DE
 			POP     BC
 			JR      NZ,SRCH1
-			XOR     A               ;Z, NC
-			RET                     ;FOUND
+			XOR     A               	; Flags: Z, NC
+			RET                     	; Found
 ;
-SRCH4:			OR      0FFH            ;NZ, NC
-			RET                     ;NOT FOUND
+SRCH4:			OR      0FFH            	; Flags: NZ, NC
+			RET                     	; Not found
 ;
 ;CHRS - Return character with given ASCII value.
 ;Result is string.
