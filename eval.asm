@@ -257,7 +257,9 @@ EXPR2S:			EX      AF,AF'			; Handle string comparisons
 			CALL    DISPT2
 			POP     DE
 			EX      DE,HL
-			LD      H,0
+			LD	A,L
+			LD	HL,0
+			LD	L,A
 			ADD     HL,SP
 			LD      SP,HL
 			EX      DE,HL
