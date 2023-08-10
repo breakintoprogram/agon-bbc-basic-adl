@@ -752,23 +752,20 @@ OSCALL_1:		LD	A, (HL)
 			RET	NC
 			INC	HL 
 			INC	HL 
+			INC	HL
 			JR	OSCALL_1
-OSCALL_2:		LD	A, (HL)
-			LD	IYL, A 
-			INC	HL 
-			LD	A, (HL) 
-			LD	IYH, A 
+OSCALL_2:		LD	IY,(HL)
 			RET
 OSCALL_TABLE:		DB 	D4h
-			DW 	OSBPUT
+			DW24 	OSBPUT
 			DB 	D7h
-			DW 	OSBGET
+			DW24 	OSBGET
 			DB 	EEh
-			DW 	OSWRCH
+			DW24 	OSWRCH
 			DB	F4h
-			DW 	OSBYTE
+			DW24 	OSBYTE
 			DB	F7h
-			DW	OSCLI
+			DW24	OSCLI
 			DB	FFh	
 
 ; OSOPEN

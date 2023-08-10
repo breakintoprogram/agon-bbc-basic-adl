@@ -1536,21 +1536,22 @@ USR:			CALL    ITEMI			; Evaluate the expression
 ;
 USR1:			PUSH    HL              	; Address on stack
 			EX      (SP),IY
-			INC     H               	; PAGE &FF? TODO: This needs fixing as &FF00 does not make much sense in 24-bit land
+			INC     H               	; Check for PAGE &00FFxx
+			OR	H
 			LD      HL,USR2         	; Return address
 			PUSH    HL
 			LD      IX,STAVAR
-			CALL    Z,OSCALL        	; Intercept &FF (see TODO)
-			LD      C,(IX+24)
+			CALL    Z,OSCALL        	; Intercept &00FFxx
+			LD      C,(IX+24)		; F% -> F
 			PUSH    BC
-			POP     AF              	; Load flags
-			LD      A,(IX+4)        	; Load Z80 registers
-			LD      B,(IX+8)		; TODO: Need to load the MSW into BC
-			LD      C,(IX+12)		; TODO: Then LSB into C
-			LD      D,(IX+16)		; TODO: Same for DE
-			LD      E,(IX+20)
-			LD      H,(IX+32)		; TODO: And HL
-			LD      L,(IX+48)
+			POP     AF
+			LD      A, (IX+4)        	; A% ->     into A
+			LD      BC,(IX+8)		; B% -> MSW into BC
+			LD      C, (IX+12)		; C% -> LSB into C
+			LD      DE,(IX+16)		; D% -> MSW into DE
+			LD      E, (IX+20)		; E% -> LSB into E
+			LD      HL,(IX+32)		; H% -> MSW into HL
+			LD      L, (IX+48)		; L% -> LSB into L
 			LD      IX,BUFFER
 			JP      (IY)            	; Off to user routine
 ;
