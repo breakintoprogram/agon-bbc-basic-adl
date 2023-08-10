@@ -1542,16 +1542,37 @@ USR1:			PUSH    HL              	; Address on stack
 			PUSH    HL
 			LD      IX,STAVAR
 			CALL    Z,OSCALL        	; Intercept &00FFxx
-			LD      C,(IX+24)		; F% -> F
+;
+			LD      C, (IX+24)		; F%
 			PUSH    BC
-			POP     AF
-			LD      A, (IX+4)        	; A% ->     into A
-			LD      BC,(IX+8)		; B% -> MSW into BC
-			LD      C, (IX+12)		; C% -> LSB into C
-			LD      DE,(IX+16)		; D% -> MSW into DE
-			LD      E, (IX+20)		; E% -> LSB into E
-			LD      HL,(IX+32)		; H% -> MSW into HL
-			LD      L, (IX+48)		; L% -> LSB into L
+;
+			LD	A, (IX+8)		; B% -> MSW 
+			LD	(R0+1), A 		
+			LD	A, (IX+9)
+			LD	(R0+2), A 
+			LD	A, (IX+12)		; C% -> LSB 
+			LD	(R0+0), A 
+			LD	BC, (R0)
+;
+			LD	A, (IX+16)		; D% -> MSW 
+			LD	(R0+1), A 		
+			LD	A, (IX+17)
+			LD	(R0+2), A 
+			LD	A, (IX+20)		; E% -> LSB 
+			LD	(R0+0), A 
+			LD	DE, (R0)
+;
+			LD	A, (IX+32)		; H% -> MSW 
+			LD	(R0+1), A 		
+			LD	A, (IX+33)
+			LD	(R0+2), A 
+			LD	A, (IX+48)		; L% -> LSB 
+			LD	(R0+0), A 
+			LD	HL, (R0)
+;
+			POP     AF			; F%
+			LD      A, (IX+4)        	; A%
+
 			LD      IX,BUFFER
 			JP      (IY)            	; Off to user routine
 ;
