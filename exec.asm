@@ -2489,15 +2489,16 @@ GROUP15_1:		CALL    COND_
 ;
 GROUP16:		SUB	1			; The number of opcodes in GROUP16
 			JR	NC,GROUP17
-			CALL    LDOP			
-			JP      NC,LDA
+			CALL	EZ80SF_FULL		; Evaluate the suffix
+			CALL    LDOP			; Check for accumulator loads	
+			JP      NC,LDA			; Yes, so jump here
 			CALL    REGHI
 			EX      AF,AF'
 			CALL    SKIP
-			CP      '('
-			JR      Z,LDIN
+			CP      '('			; Check for bracket
+			JR      Z,LDIN			; Yes, so we're doing an indirect load from memory
 			EX      AF,AF'
-			JP      NC,GROUP05_1
+			JP      NC,GROUP05_1		; Load single register direct; go here
 			LD      C,1
 			CALL    PAIR1
 			RET     C
@@ -2509,7 +2510,7 @@ GROUP16:		SUB	1			; The number of opcodes in GROUP16
 			AND     3FH
 			CP      12
 			LD      A,C
-			JP      NZ,GROUP12_1
+			JP      NZ,GROUP12_1		; Load register pair direct; go here
 			LD      A,0F9H
 			JP      BYTE_
 ;
@@ -2529,7 +2530,9 @@ LDIN:			EX      AF,AF'
 			CALL    LD16
 			RET     C
 			CALL    BYTE_
-			JP      VAL16	
+			BIT	7,D			; Check the ADL flag
+			JP	NZ,VAL24 		; If it is set, then use 24-bit addresses			
+			JP      VAL16			; Otherwise use 16-bit addresses
 ;
 ; Group 17 - TST
 ;
