@@ -4,15 +4,18 @@
 ; Author:	(C) Copyright  R.T.Russell  1984
 ; Modified By:	Dean Belfield
 ; Created:	12/05/2023
-; Last Updated:	26/06/2023
+; Last Updated:	13/08/2023
 ;
 ; Modinfo:
 ; 07/06/2023:	Modified to run in ADL mode
 ; 26/06/2023:	Fixed HEX and HEXSTR
+; 13/08/2023:	Added INKEY(-n) support (requires MOS 1.04)
 
 			.ASSUME	ADL = 1
 
 			INCLUDE	"equs.inc"
+			INCLUDE "macros.inc"
+			INCLUDE "mos_api.inc"	; In MOS/src
 
 			SEGMENT CODE
 				
@@ -624,7 +627,6 @@ LOADS2:			LD      A,(HL)
 ;IY (text pointer) updated.
 ;Bit 7 of A indicates type: 0 = numeric, 1 = string.
 ;
-;
 ;POS - horizontal cursor position.
 ;VPOS - vertical cursor position.
 ;EOF - return status of file.
@@ -643,73 +645,93 @@ LOADS2:			LD      A,(HL)
 ;COUNT - number of printing characters since CR.
 ;Results are integer numeric.
 ;
-POS:			CALL    GETCSR
-			EX      DE,HL
-			JP      COUNT1
-VPOS:			CALL    GETCSR
-			JP      COUNT1
-EOF:			CALL    CHANEL
+POS:			CALL    GETCSR			; Return the horizontal cursor position
+			EX      DE,HL			;  L: The X cursor position
+			JP      COUNT1			; Return an 8-bit value
+;			
+VPOS:			CALL    GETCSR			; Return the vertical cursor position
+			JP      COUNT1			; Return an 8-bit value
+;			
+EOF:			CALL    CHANEL			; Check for EOF
 			CALL    OSSTAT
-			JP      Z,TRUE
-			JP      ZERO
-BGET:			CALL    CHANEL          ;CHANNEL NUMBER
+			JP      Z,TRUE			; Yes, so return true
+			JP      ZERO			; Otherwise return false (zero)
+;			
+BGET:			CALL    CHANEL          	; Channel number
 			CALL    OSBGET
 			LD      L,A
-			JR      COUNT0
-INKEY:			CALL    INKEYS
-			JR      ASC0
-GET:			CALL    NXT
-			CP      '('
-			JR      NZ,GET0
-			CALL    ITEMI           ;PORT ADDRESS
+			JP      COUNT0			; Return an 8-bit value
+;			
+INKEY:			CALL    ITEMI			; Get the argument
+			BIT	7, H			; Check the sign
+			EXX				; HL: The argument
+			JP	NZ, INKEYM		; It's negative, so do INKEY(-n)
+			CALL	INKEY0 			; Do INKEY(n)
+			JR      ASC0			; Return a numeric value
+;			
+GET:			CALL    NXT			; Skip whitespace
+			CP      '('			; Is it GET(
+			JR      NZ,GET0			; No, so get a keyboard character
+			CALL    ITEMI           	; Yes, so fetch the port address
 			EXX
-			LD      B,H
+			LD      B,H			; BC: The port address
 			LD      C,L
-			IN      L,(C)           ;INPUT FROM PORT BC
-			JR      COUNT0
-GET0:			CALL    GETS
-			JR      ASC1
-ASC:			CALL    ITEMS
-ASC0:			XOR     A
-			CP      E
-			JP      Z,TRUE          ;NULL STRING
-ASC1:			LD      HL,(ACCS)
-			JR      COUNT0
-LEN:			CALL    ITEMS
-			EX      DE,HL
-			JR      COUNT0
-LOMEMV:			LD      HL,(LOMEM)
+			IN      L,(C)           	;  L: Input from port BC
+			JR      COUNT0			; Return an 8-bit value
+;
+GET0:			CALL    GETS			; Read the keyboard character			
+			JR      ASC1			; And return the value
+;			
+ASC:			CALL    ITEMS			; Get the string argument argument
+ASC0:			XOR     A			; Quickly check the length of the string in ACCS
+			CP      E			; Is the pointer 0
+			JP      Z,TRUE          	; Yes, so return -1 as it is a null string
+ASC1:			LD      HL,(ACCS)		;  L: The first character (H will be discarded in COUNT0
+			JR      COUNT0			; An 8-bit value
+;
+LEN:			CALL    ITEMS			; Get the string argument
+			EX      DE,HL			; HL: Pointer into ACCS
+			JR      COUNT0			; Return L
+;			
+LOMEMV:			LD      HL,(LOMEM)		; Return the LOMEM system variable
 			LD	A, (LOMEM+2)
-			JR      COUNT2
-HIMEMV:			LD      HL,(HIMEM)
+			JR      COUNT2			; A 24-bit value
+;			
+HIMEMV:			LD      HL,(HIMEM)		; Return the HIMEM system variable
 			LD	A, (HIMEM+2)
+			JR      COUNT2			; A 24-bit value
+;			
+PAGEV:			LD    	HL,(PAGE_)		; Return the PAGE system variable
+			LD	A, (PAGE_+2)		; A 24-bit value
 			JR      COUNT2
-PAGEV:			LD    	HL,(PAGE_)
-			LD	A, (PAGE_+2)
-			JR      COUNT2
-TOPV:			LD      A,(IY)
-			INC     IY              ;SKIP "P"
+;			
+TOPV:			LD      A,(IY)			; Return the TOP system variable
+			INC     IY              	; Skip "P"
 			CP      'P'
-			JP      NZ,SYNTAX       ;"Syntax Error"
+			JP      NZ,SYNTAX       	; Throw "Syntax Error"
 			LD      HL,(TOP)
 			LD	A, (TOP+2)
 			JR      COUNT2
-ERLV:			LD      HL,(ERL)
-			JR      COUNT1
-ERRV:			LD      HL,(ERR)
-			JR      COUNT0
-COUNTV:			LD      HL,(COUNT)
-COUNT0:			LD      H,0
-COUNT1:			EXX
+;			
+ERLV:			LD      HL,(ERL)		; Return the error line
+			JR      COUNT1			; A 16-bit value
+;			
+ERRV:			LD      HL,(ERR)		; Return the error value
+			JR      COUNT0			; An 8-bit value
+;			
+COUNTV:			LD      HL,(COUNT)		; Return the print position sysvar
+
+COUNT0:			LD      H,0			; Return L
+COUNT1:			EXX				; Return HL
 			XOR     A
-			LD      C,A             ;INTEGER MARKER
+			LD      C,A             	; Integer marker
 			LD      H,A
 			LD      L,A
 			RET
 COUNT2:			EXX
 			LD	L,A 
 			XOR	A 
-			LD	C,A		;INTEGER MARKER
+			LD	C,A			; Integer marker
 			LD	H,A 
 			RET
 ;
@@ -1151,15 +1173,51 @@ GET1:			SCF
 ;          string if time elapsed.
 ; Result is string.
 ;
-INKEYS:			CALL    ITEMI
+INKEYS:			CALL    ITEMI			; Fetch the argument
 			EXX
-			CALL    OSKEY
-INKEY1:			LD      DE,ACCS
+INKEY0:			CALL    OSKEY			; This is the entry point for INKEY(n)
+INKEY1:			LD      DE,ACCS			; Store the result in the string accumulator
 			LD      (DE),A
 			LD      A,80H
 			RET     NC
 			INC     E
 			RET
+;
+; INKEYM - Check immediately whether a given key is being pressed
+; Result is integer numeric
+;
+INKEYM:			MOSCALL	mos_getkbmap		; Get the base address of the keyboard
+			INC	HL			; Index from 0
+			LD	A, L			; Negate the LSB of the answer
+			NEG
+			LD	C, A			;  E: The positive keycode value
+			LD	A, 1			; Throw an "Out of range" error
+			JP	M, ERROR_		; if the argument < - 128
+;
+			LD	HL, BITLOOKUP		; HL: The bit lookup table
+			LD	DE, 0
+			LD	A, C
+			AND	00000111b		; Just need the first three bits
+			LD	E, A			; DE: The bit number
+			ADD	HL, DE
+			LD	B, (HL)			;  B: The mask
+;
+			LD	A, C			; Fetch the keycode again
+			AND	01111000b		; And divide by 8
+			RRCA
+			RRCA
+			RRCA
+			LD	E, A			; DE: The offset (the MSW has already been cleared previously)
+			ADD	IX, DE			; IX: The address
+			LD	A, B			;  B: The mask
+			AND	(IX+0)			; Check whether the bit is set
+			JP	Z, ZERO			; No, so return 0
+			JP	TRUE			; Otherwise return -1
+;
+; A bit lookup table
+;
+BITLOOKUP:		DB	01h, 02h, 04h, 08h
+			DB	10h, 20h, 40h, 80h
 ;
 ; MID$ - Return sub-string.
 ; Result is string.
