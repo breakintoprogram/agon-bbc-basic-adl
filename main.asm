@@ -4,7 +4,7 @@
 ; Author:	(C) Copyright  R.T.Russell  1984
 ; Modified By:	Dean Belfield
 ; Created:	12/05/2023
-; Last Updated:	26/06/2023
+; Last Updated:	17/08/2023
 ;
 ; Modinfo:
 ; 07/05/1984:	Version 2.3
@@ -12,6 +12,7 @@
 ; 03/05/2022:	Modified by Dean Belfield
 ; 06/06/2023:	Modified to run in ADL mode
 ; 26/06/2023:	Fixed binary and unary indirection
+; 17/08/2023:	Added binary constants
 
 			.ASSUME	ADL = 1
 
@@ -1918,6 +1919,7 @@ SPACE_: 		XOR     A
 ;
 ; LEXAN - LEXICAL ANALYSIS.
 ;  Bit 0,C: 1=left, 0=right
+;  Bit 2,C: 1=in BINARY
 ;  Bit 3,C: 1=in HEX
 ;  Bit 4,C: 1=accept line number
 ;  Bit 5,C: 1=in variable, FN, PROC
@@ -1945,12 +1947,16 @@ LEXAN2:			LD      A,E             	; Destination buffer on page boundary, so E c
 			JR      NC,LEXAN3		; Yes, so skip
 			RES     5,C             	; FLAG: NOT IN VARIABLE
 			RES     3,C             	; FLAG: NOT IN HEX
+			RES	2,C			; FLAG: NOT IN BINARY
 ;
 LEXAN3:			CP      ' '			; Ignore spaces
 			JR      Z,LEXAN1        	
 			CP      ','			; Ignore commas
 			JR      Z,LEXAN1 
-			CP      'G'			; If less then 'G'
+			CP	'2'			; If less than '2'
+			JR	NC, $F			; No, so skip
+			RES	2,C			; FLAG: NOT IN BINARY
+$$:			CP      'G'			; If less then 'G'
 			JR      C,LEXAN4		; Yes, so skip
 			RES     3,C             	; FLAG: NOT IN HEX
 ;
@@ -2018,22 +2024,26 @@ LEXANC:			CP      '&'			; Check for hex prefix
 			JR      NZ,LEXAND		; If not, skip
 			SET     3,C             	; FLAG: IN HEX
 ;
-LEXAND:			LD      HL,LIST1		; List of tokens that must be followed by a line number	
+LEXAND:			CP	'%'			; Check for binary prefix
+			JR	NZ,LEXANE		; If not, skip
+			SET	2,C			; FLAG: IN BINARY
+;
+LEXANE:			LD      HL,LIST1		; List of tokens that must be followed by a line number	
 			PUSH    BC			
 			LD      BC,LIST1L		; The list length
 			CPIR				; Check if the token is in this list
 			POP     BC
-			JR      NZ,LEXANE		; If not, then skip
+			JR      NZ,LEXANF		; If not, then skip
 			SET     4,C             	; FLAG: ACCEPT LINE NUMBER
 ;
-LEXANE:			LD      HL,LIST2		; List of tokens that switch the lexical analysis back to LEFT mode
+LEXANF:			LD      HL,LIST2		; List of tokens that switch the lexical analysis back to LEFT mode
 			PUSH    BC
 			LD      BC,LIST2L		; The list length
 			CPIR				; Check if the token is in this list
 			POP     BC		
-			JR      NZ,LEXANF		; If not, then skip
+			JR      NZ,LEXANG		; If not, then skip
 			SET     0,C             	; FLAG: ENTER LEFT MODE
-LEXANF:			JP      LEXAN1			; And loop
+LEXANG:			JP      LEXAN1			; And loop
 
 ;
 ; LIST1: List of tokens that must be followed by line numbers

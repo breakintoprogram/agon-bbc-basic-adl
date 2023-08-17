@@ -4,12 +4,13 @@
 ; Author:	(C) Copyright  R.T.Russell  1984
 ; Modified By:	Dean Belfield
 ; Created:	12/05/2023
-; Last Updated:	13/08/2023
+; Last Updated:	17/08/2023
 ;
 ; Modinfo:
 ; 07/06/2023:	Modified to run in ADL mode
 ; 26/06/2023:	Fixed HEX and HEXSTR
 ; 13/08/2023:	Added INKEY(-n) support (requires MOS 1.04)
+; 17/08/2023:	Added binary constants
 
 			.ASSUME	ADL = 1
 
@@ -78,6 +79,7 @@
 			XREF	OSRDCH
 			XREF	OSKEY
 			XREF	INKEY1
+			XREF	EXTERR
 ;
 ; BINARY FLOATING POINT REPRESENTATION:
 ;    32 BIT SIGN-MAGNITUDE NORMALIZED MANTISSA
@@ -433,6 +435,29 @@ HEX2:			EXX				; Shift the result left B (4) times. This makes
 BADHEX:			LD      A,28
 			JP      ERROR_          	; Error: "Bad HEX"
 ;
+; BIN - Get binary constant.
+;   Inputs: ASCII string at (IY)
+;  Outputs: Integer result in H'L'HL, C=0, A7=0.
+;           IY updated (points to delimiter)
+;
+BIN:			CALL    ZERO			; Set result to 0
+			CALL	BINDIG			; Fetch the character from IY
+			JR	C,BADBIN		; If invalid BIN character then Error: "Bad Binary"
+BIN1:			INC	IY			; Move pointer to next character
+			RRCA				; Bit 0 of ASCII '0' is 0, and ASCII '1' is 1, so shift that bit into carry
+			EXX				; 
+			ADC.S	HL,HL			; And shift back into into H'L'HL (note the ADC)
+			EXX
+			ADC.S	HL,HL
+			CALL	BINDIG			; Fetch the next character
+			JR	NC,BIN1
+			XOR	A			; Clear A
+			RET
+;
+BADBIN:			LD	A, 28			; Error: "Bad Binary" - reuses same error code as Bad HEX
+			CALL	EXTERR
+			DB	"Bad Binary", 0
+;
 ; MINUS - Unary minus.
 ;   Inputs: IY = text pointer
 ;  Outputs: Numeric result, same type as argument.
@@ -484,13 +509,15 @@ ITEM:			CALL    CHECK			; Check there's at least a page of free memory left and 
 			CALL    NXT			; Skip spaces
 			INC     IY			; Move to the prefix character
 			CP      '&'			; If `&`
-			JR      Z,HEX           	; Then get a HEX constant
+			JP      Z,HEX           	; Then get a HEX constant
+			CP	'%'			; If '%'
+			JR	Z,BIN			; Then get a BINARY constant
 			CP      '-'			; If `-`
 			JR      Z,MINUS         	; Then get a negative number
 			CP      '+'			; If `+`
 			JP      Z,ITEMN         	; Then just fetch the number (unary plus)
 			CP      '('			; If `(`
-			JR      Z,ITEM1         	; Start of a bracketed expression
+			JP      Z,ITEM1         	; Start of a bracketed expression
 			CP      34			; If `"`
 			JR      Z,CONS          	; Start of a string constant
 			CP      TCMD			; Is it out of range of the function table?
@@ -1558,6 +1585,13 @@ HEXDIG:			LD      A,(IY)
 			RET     C
 			SUB     'A'-10
 			CP      16
+			CCF
+			RET
+;
+BINDIG:			LD	A,(IY)
+			CP	'0'
+			RET	C
+			CP	'1'+1
 			CCF
 			RET
 ;
