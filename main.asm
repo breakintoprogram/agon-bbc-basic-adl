@@ -714,11 +714,11 @@ RENUM:			CALL    CLEAR           	; Uses the heap so clear all dynamic variables
 RENUM1:			LD      A,(HL)          	; Fetch the line length byte
 			OR      A			; Is it zero, i.e. the end of program marker?
 			JR      Z,RENUM2		; Yes, so skip to the next part
-			INC     HL			
+			INC     HL
 			LD      C,(HL)          	; BC: The OLD line number
 			INC     HL
 			LD      B,(HL)
-			LD      A,B
+			LD      A,B			; Check whether the line number is zero - we only need to check the LSW
 			OR      C
 			JP      Z,CLOOP        		; If the line number is zero, then exit back to the command line
 			EX      DE,HL			; DE: Pointer to BASIC program, HL: Pointer to heap
@@ -726,9 +726,9 @@ RENUM1:			LD      A,(HL)          	; Fetch the line length byte
 			INC     HL
 			LD      (HL),B
 			INC     HL
-			EXX				; HL: line number, BC: increment			
+			EXX				; HL: line number, BC: increment (16-bit values)
 			PUSH    HL			; HL: Stack the NEW line number value
-			ADD     HL,BC           	; Add the increment
+			ADD.S   HL,BC           	; Add the increment
 			JP      C,TOOBIG        	; If > 65535, then error: "Too big"
 			EXX				; DE: Pointer to BASIC program, HL: Pointer to heap
 			POP     BC			; BC: Pop the NEW line number value off the stack
@@ -739,10 +739,9 @@ RENUM1:			LD      A,(HL)          	; Fetch the line length byte
 			EX      DE,HL			; HL: Pointer to BASIC program, DE: Pointer to heap
 			DEC     HL			; Back up to the line length byte
 			DEC     HL
-			XOR     A			; Not sure why this is done here instead of LD B,0
-			LD      B,A			; BC: Line length
-			LD      C,(HL)
-			ADD     HL,BC           	; Advance HL to next line
+			LD	BC, 0
+			LD      C,(HL)			; BC: Line length
+			ADD	HL,BC           	; Advance HL to next line
 			EX      DE,HL			; DE: Pointer to BASIC program, HL: Pointer to heap
 			PUSH    HL
 			INC     H			; Increment to next page
@@ -792,7 +791,9 @@ RENUM3:			LD      C,(HL)			; Fetch the first line length byte
 			DEC     C			; Subtract 3 from the line length to compensate for increasing HL by 3 above
 			DEC     C
 			DEC     C
-			LD      B,0			; BC: Line length
+			LD	A,C
+			LD	BC,0
+			LD	C,A			; BC: Line length
 ;
 RENUM7:			LD      A,LINO			; A: The token code that precedes any line number encoded in BASIC (i.e. GOTO/GOSUB)
 			CPIR                    	; Search for the token
@@ -820,7 +821,7 @@ RENUM4:			LD      E,(HL)          	; DE: The OLD line number
 			INC     HL
 			EX      DE,HL			; HL: The OLD line number, DE: Pointer in the global heap
 			OR      A               	; Clear the carry and...
-			SBC     HL,BC			; Compare by means of subtraction the OLD line number against the one in the heap
+			SBC.S   HL,BC			; Compare by means of subtraction the OLD line number against the one in the heap
 			EX      DE,HL			; HL: Pointer in the global heap
 			LD      E,(HL)          	; DE: The NEW line number
 			INC     HL
