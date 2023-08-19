@@ -1013,7 +1013,7 @@ PROC4:			LD	DE,(HL)			; HL: Address of pointer; fetch entity address in DE
 			PUSH    IY
 			POP     BC              	; Save IY in BC
 			EXX
-			CALL    SAVLOC          	; Save dummy variables
+			CALL    SAVLOC          	; Save local parameters
 			CALL    BRAKET          	; Closing bracket
 			EXX
 			PUSH    BC
@@ -1038,77 +1038,83 @@ PROC5:			LD	(HL), DE		; Save return address
 
 ; LOCAL var[,var...]
 ;
-LOCAL_:			POP     BC
+LOCAL_:			POP     BC			; BC: The current check marker (on the stack)
 			PUSH    BC
-			LD      HL,FNCHK
+			LD      HL,FNCHK		; Check if we are in a FN
 			OR      A
 			SBC     HL,BC
-			JR      Z,LOCAL1
-			LD      HL,PROCHK
+			JR      Z,LOCAL1		; Yes, so all good, we can use local			
+			LD      HL,PROCHK		; Now check if we are in a PROC
 			OR      A
 			SBC     HL,BC
-			JR      Z,LOCAL1
-			LD      HL,LOCCHK
+			JR      Z,LOCAL1		; Again, all good, we can use local
+			LD      HL,LOCCHK		; Finally check for the local parameters marker
 			OR      A
-			SBC     HL,BC
+			SBC     HL,BC			; If it is not present, then
 			LD      A,12
-			JP      NZ,ERROR_        ;"Not LOCAL"
-LOCAL1:			PUSH    IY
-			POP     BC
+			JP      NZ,ERROR_        	; Then throw a "Not LOCAL" errr
+;
+; At this point we are adding a local variable into a PROC or FN
+;
+LOCAL1:			PUSH    IY			; IY: BASIC pointer
+			POP     BC			; BC: Copy of the BASIC pointer
 			EXX
 			DEC     IY
 			CALL    SAVLOC
 			EXX
 			PUSH    BC
 			POP     IY
-LOCAL2:			CALL    GETVAR
+;			
+LOCAL2:			CALL    GETVAR			; Get the variable location
 			JP      NZ,SYNTAX
-			OR      A               ;TYPE
+			OR      A               	; Check the variable type (80h = string)
 			EX      AF,AF'
-			CALL    ZERO
+			CALL    ZERO			; Zero the variable anyway
 			EX      AF,AF'
 			PUSH    AF
-			CALL    P,STORE         ;ZERO
+			CALL    P,STORE         	; Call STORE if it is not a string
 			POP     AF
 			LD      E,C
-			CALL    M,STORES
-			CALL    NXT
-			CP      ','
-			JP      NZ,XEQ
-			INC     IY
-			CALL    NXT
-			JR      LOCAL2
+			CALL    M,STORES		; Call STORES if it is a string
+			CALL    NXT			; Skip to the next character in the expression
+			CP      ','			; Is it a comma?
+			JP      NZ,XEQ			; No, so we're done, carry on executing
+			INC     IY			; Yes, so skip the comma
+			CALL    NXT			; And any whitespace
+			JR      LOCAL2			; Then loop back and handle any further local variables
 
 ; ENDPROC
 ;
-ENDPRO:			POP     BC
-			LD      HL,LOCCHK
+ENDPRO:			POP     BC			; Pop the check value off the stack
+			LD      HL,LOCCHK		; Check if it is the LOCAL Marker
 			OR      A
 			SBC     HL,BC
-			JR      Z,UNSTK         ;LOCAL VARIABLE
-			LD      HL,PROCHK       ;PROC MARKER
+			JR      Z,UNSTK         	; Yes, it is, so first need to unstack the local variables
+;
+			LD      HL,PROCHK       	; Check if it is the PROC marker
 			OR      A
 			SBC     HL,BC
 			POP     IY
-			JP      Z,XEQ
-			LD      A,13
-			JP      ERROR_           ;"No PROC"
+			JP      Z,XEQ			; Yes, it is, so carry on, all is good
+			LD      A,13			; Otherwise throw the "No PROC" error
+			JP      ERROR_
 ;
-UNSTK:			POP     IX
+UNSTK:			POP     IX			; Unstack a single local variable
 			POP     BC
 			LD      A,B
 			OR      A
-			JP      M,UNSTK1        ;STRING
-			POP     HL
+			JP      M,UNSTK1        	; Jump here if it is a string? (80h)
+			POP     HL			; Unstack a normal variable
 			EXX
 			POP     HL
 			EXX
-			CALL    STORE
-			JR      ENDPRO
-UNSTK1:			LD      HL,0
+			CALL    STORE			; TODO: Not sure why or where it is being stored at this point
+			JR      ENDPRO			; And loop back to ENDPRO
+;
+UNSTK1:			LD      HL,0			; Unstack a string
 			ADD     HL,SP
-			LD      E,C
-			CALL    STORES
+			LD      E,C			
+			CALL    STORES			; TODO: Not sure why or where it is being stored at this point
 			LD      SP,HL
 			JR      ENDPRO
 
@@ -1476,53 +1482,65 @@ VDU3:			CALL    TERMQ
 
 ; CLOSE channel number
 ;
-CLOSE:			CALL    CHANEL
-			CALL    OSSHUT
+CLOSE:			CALL    CHANEL			; Fetch the channel number
+			CALL    OSSHUT			; Close the channel
 			JP      XEQ
 
 ; BPUT channel,byte
 ;
-BPUT:			CALL    CHANEL          ;CHANNEL NUMBER
-			PUSH    DE
-			CALL    COMMA
-			CALL    EXPRI           ;BYTE
+BPUT:			CALL    CHANEL          	; Fetch the channel number
+			PUSH    DE			; DE: Channel number
+			CALL    COMMA			; Skip to the next expression
+			CALL    EXPRI           	; Feth the data
 			EXX
-			LD      A,L
+			LD      A,L			; A: The byte to write
 			POP     DE
-			CALL    OSBPUT
+			CALL    OSBPUT			; Write the byte out
 			JP      XEQ
 
 ; CALL address[,var[,var...]]
 ;
-CALL_:			CALL    EXPRI           ;ADDRESS
+; Note that the parameter table differs from the Z80 version
+; Each entry now takes up 4 bytes, not 3, so the table is now:
+;  -1 byte:  Number of parameters
+; Then, for each parameter:
+;  -1 byte:  Parameter type (00h: byte, 04h: word, 05h: real, 80h: fixed string, 81h: dynamic string)
+;  -3 bytes: Parameter address
+;
+; See https://www.bbcbasic.co.uk/bbcbasic/mancpm/bbckey1.html#callparms for more information
+;
+CALL_:			CALL    EXPRI           	; Fetch the address
 			EXX
-			PUSH    HL              ;SAVE IT
-			LD      B,0             ;PARAMETER COUNTER
-			LD      DE,BUFFER       ;VECTOR
-CALL1:			CALL    NXT
-			CP      ','
-			JR      NZ,CALL2
-			INC     IY
-			INC     B
-			CALL    NXT
+			PUSH    HL              	; Save the address parameter on the stack
+			LD      B,0             	;  B: The parameter counter
+			LD      DE,BUFFER       	; DE: Vector
+;
+CALL1:			CALL    NXT			; Skip whitespace
+			CP      ','			; Check for comma
+			JR      NZ,CALL2		; If no more parameters, then jump here
+			INC     IY			; Skip to the next character
+			INC     B			; Increment the parameter count
+			CALL    NXT			; Skip whitespace
 			PUSH    BC
 			PUSH    DE
 			CALL    VAR_
 			POP     DE
 			POP     BC
 			INC     DE
-			LD      (DE),A          ;PARAMETER TYPE
+			LD      (DE),A			; Save the parameter type
 			INC     DE
 			EX      DE,HL
-			LD      (HL),E          ;PARAMETER ADDRESS
-			INC     HL
-			LD      (HL),D
+			LD	(HL),DE			; Save the parameter address (3 bytes)
+			INC	HL
+			INC	HL
+			INC	HL
 			EX      DE,HL
 			JR      CALL1
+;
 CALL2:			LD      A,B
-			LD      (BUFFER),A      ;PARAMETER COUNT
-			POP     HL              ;RESTORE ADDRESS
-			CALL    USR1
+			LD      (BUFFER),A      	; Save the parameter count
+			POP     HL              	; Restore the address parameter value
+			CALL    USR1			; And call it
 			JP      XEQ
 
 ; USR(address)
@@ -1719,23 +1737,26 @@ STORS1:			EXX				; This block was a call to STORE4
 ; Check whether the stack is full
 ;
 CHECK:			PUSH    HL
-			LD      HL,(FREE)
-			INC     H
-			SBC     HL,SP
+			PUSH	BC
+			LD      HL,(FREE)		; HL: Address of first free space byte
+			LD	BC,100h			; BC: One page of memory
+			ADD	HL,BC			; Add a page to FREE
+			SBC     HL,SP			; And subtract the current SP
+			POP	BC
 			POP     HL
-			RET     C
-			XOR     A
+			RET     C			; The SP is not in the same page, so just return
+			XOR     A			; Otherwise
 			JP      ERROR_			; Throw error "No room"
 ;
-STORS3:			LD      C,E
+STORS3:			LD	BC,0
+			LD      C,E			; BC: String length
 			PUSH    IX
-			POP     DE
-			XOR     A
-			LD      B,A
+			POP     DE			; DE: Destination
+			XOR     A			; Check if string length is 0
 			CP      C
-			JR      Z,STORS5
+			JR      Z,STORS5		; Yes, so don't copy
 			LDIR
-STORS5:			LD      A,CR
+STORS5:			LD      A,CR			; Finally add the terminator
 			LD      (DE),A
 			RET
 
@@ -1749,22 +1770,23 @@ STORS5:			LD      A,CR
 ;  Destroys: Everything
 ;
 ARGUE:			LD      A,-1
-			PUSH    AF              ;PUT MARKER ON STACK
-ARGUE1:			INC     IY              ;BUMP PAST ( OR ,
+			PUSH    AF              	; Put marker on the stack
+ARGUE1:			INC     IY              	; Bump past '(' or ',''
 			INC     DE
 			PUSH    DE
-			CALL    NXT
-			CALL    GETVAR
-			JR      C,ARGERR
+			CALL    NXT			; Skip any whitespace
+			CALL    GETVAR			; Get the location of the variable in HL/IX
+			JR      C,ARGERR		; If the parameter contains an illegal character then throw an error
 			CALL    NZ,PUTVAR
 			POP     DE
-			PUSH    HL              ;VARPTR
-			OR      A               ;TYPE
+			PUSH    HL              	; VARPTR
+			OR      A               	; Check the variable type
 			PUSH    AF
 			PUSH    DE
 			EX      (SP),IY
-			JP      M,ARGUE2        ;STRING
-			CALL    EXPRN           ;PARAMETER VALUE
+			JP      M,ARGUE2        	; Jump here if it is a string
+;
+			CALL    EXPRN           	; At this point it is numeric, so get the numeric expression value
 			EX      (SP),IY
 			POP     DE
 			POP     AF
@@ -1774,9 +1796,10 @@ ARGUE1:			INC     IY              ;BUMP PAST ( OR ,
 			PUSH    HL
 			LD      B,A
 			PUSH    BC
-			CALL    CHECK           ;CHECK ROOM
+			CALL    CHECK           	; Check room
 			JR      ARGUE4
-ARGUE2:			CALL    EXPRS
+;
+ARGUE2:			CALL    EXPRS			; At this point it is a string variable, so get the string expression value
 			EX      (SP),IY
 			EXX
 			POP     DE
@@ -1784,15 +1807,18 @@ ARGUE2:			CALL    EXPRS
 			POP     AF
 			CALL    PUSHS
 			EXX
-ARGUE4:			CALL    NXT
-			CP      ','
-			JR      NZ,ARGUE5
-			LD      A,(DE)
-			CP      ','
-			JR      Z,ARGUE1        ;ANOTHER
+;
+ARGUE4:			CALL    NXT			; Skip whitespace
+			CP      ','			; Check to see if the next value is a comma
+			JR      NZ,ARGUE5		; No, so jump here
+			LD      A,(DE)	
+			CP      ','			; Are there any more arguments?
+			JR      Z,ARGUE1        	; Yes, so loop
+;
 ARGERR:			LD      A,31
-			JP      ERROR_           ;"Arguments"
-ARGUE5:			CALL    BRAKET
+			JP      ERROR_           	; Throw error "Arguments"
+;
+ARGUE5:			CALL    BRAKET			; Check for end bracket (throws an error if missing)
 			LD      A,(DE)
 			CP      ')'
 			JR      NZ,ARGERR
@@ -1802,17 +1828,18 @@ ARGUE6:			POP     BC
 			LD      A,B
 			INC     A
 			EXX
-			RET     Z               ;MARKER POPPED
+			RET     Z               	; Marker popped
 			EXX
 			DEC     A
-			JP      M,ARGUE7        ;STRING
+			JP      M,ARGUE7        	; If it is a string, then jump here
 			POP     HL
 			EXX
 			POP     HL
 			EXX
 			POP     IX
-			CALL    STORE           ;WRITE TO DUMMY
+			CALL    STORE	           	; Write to dummy variable
 			JR      ARGUE6
+;
 ARGUE7:			CALL    POPS
 			POP     IX
 			CALL    STACCS
@@ -1825,28 +1852,29 @@ ARGUE7:			CALL    POPS
 ;   Outputs: IY updated
 ;  Destroys: A,B,C,D,E,H,L,IX,IY,F,SP
 ;
-SAVLOC:			POP     DE              ;RETURN ADDRESS
-SAVLO1:			INC     IY              ;BUMP PAST ( OR ,
-			CALL    NXT
-			PUSH    DE
+SAVLOC:			POP     DE              	; DE: Return address (from the CALL)
+;
+SAVLO1:			INC     IY              	; Bump past '(' or ','
+			CALL    NXT			; And also any whitespace
+			PUSH    DE			; Push the return address back onto the stack
 			EXX
 			PUSH    BC
 			PUSH    DE
 			PUSH    HL
 			EXX
-			CALL    VAR_             ;DUMMY VARIABLE
+			CALL    VAR_             	; Dummy variable
 			EXX
 			POP     HL
 			POP     DE
 			POP     BC
 			EXX
 			POP     DE
-			OR      A               ;TYPE
-			JP      M,SAVLO2        ;STRING
+			OR      A               	; Check the variable type
+			JP      M,SAVLO2        	; 80h = string, so jump to save a local string
 			EXX
-			PUSH    HL              ;SAVE H'L'
+			PUSH    HL              	; Save H'L'
 			EXX
-			LD      B,A             ;TYPE
+			LD      B,A             	;  B: Variable type
 			CALL    LOADN
 			EXX
 			EX      (SP),HL
@@ -1854,7 +1882,8 @@ SAVLO1:			INC     IY              ;BUMP PAST ( OR ,
 			PUSH    HL
 			PUSH    BC
 			JR      SAVLO4
-SAVLO2:			PUSH    AF              ;STRING TYPE
+;
+SAVLO2:			PUSH    AF              	; Save the type (string)
 			PUSH    DE
 			EXX
 			PUSH    HL
@@ -1863,42 +1892,43 @@ SAVLO2:			PUSH    AF              ;STRING TYPE
 			EXX
 			POP     HL
 			EXX
-			LD      C,E
+			LD	BC,0
+			LD      C,E			; BC: String length
 			POP     DE
-			CALL    CHECK
-			POP     AF              ;LEVEL STACK
+			CALL    CHECK			; Check if there is space on the stack
+			POP     AF              	; Level stack
 			LD      HL,0
-			LD      B,L
-			SBC     HL,BC
-			ADD     HL,SP
+			SBC     HL,BC			; HL: Number of bytes required on the stack for the string
+			ADD     HL,SP			; Make space for the string on the stack
 			LD      SP,HL
-			LD      B,A             ;TYPE
+			LD      B,A             	;  B: Variable type
 			PUSH    BC
 			JR      Z,SAVLO4
 			PUSH    DE
 			LD      DE,ACCS
 			EX      DE,HL
 			LD      B,L
-			LDIR                    ;SAVE STRING ON STACK
+			LDIR                    	; Save the string onto the stack
 			POP     DE
-SAVLO4:			PUSH    IX              ;VARPTR
+;
+SAVLO4:			PUSH    IX			; VARPTR
 			CALL    SAVLO5
 LOCCHK:			EQU     $
 SAVLO5:			CALL    CHECK
 			CALL    NXT
-			CP      ','             ;MORE?
-			JR      Z,SAVLO1
-			EX      DE,HL
-			JP      (HL)            ;"RETURN"
+			CP      ','             	; Are there any more local variables?
+			JR      Z,SAVLO1		; Yes, so loop
+			EX      DE,HL			; DE -> HL: The return address
+			JP      (HL)            	; And effectvely return
 ;
-DELIM:			LD      A,(IY)          ;ASSEMBLER DELIMITER
+DELIM:			LD      A,(IY)          	; Assembler delimiter
 			CP      ' '
 			RET     Z
 			CP      ','
 			RET     Z
 			CP      ')'
 			RET     Z
-TERM:			CP      ';'             ;ASSEMBLER TERMINATOR
+TERM:			CP      ';'             	; Assembler terminator
 			RET     Z
 			CP      '\'
 			RET     Z
@@ -1907,7 +1937,7 @@ TERM:			CP      ';'             ;ASSEMBLER TERMINATOR
 TERMQ:			CALL    NXT
 			CP      ELSE_
 			RET     NC
-TERM0:			CP      ':'             ;ASSEMBLER SEPARATOR
+TERM0:			CP      ':'             	; Assembler seperator
 			RET     NC
 			CP      CR
 			RET
@@ -1917,12 +1947,14 @@ SPAN:			CALL    TERMQ
 			INC     IY
 			JR      SPAN
 ;
-EQUALS:			CALL    NXT
-			INC     IY
-			CP      '='
-			RET     Z
-			LD      A,4
-			JP      ERROR_           ;"Mistake"
+; This snippet is used to check whether an expression is followed by an '=' symbol
+;
+EQUALS:			CALL    NXT			; Skip whitespace
+			INC     IY			; Skip past the character in question
+			CP      '='			; Is it '='
+			RET     Z			; Yes, so return
+			LD      A,4			; Otherwise
+			JP      ERROR_           	; Throw error "Mistake"
 ;
 FORMAT:			CP      TAB
 			JR      Z,DOTAB
@@ -2010,7 +2042,7 @@ LINE1S:			LD      A,(HL)
 			JR      LINE1S
 ;
 XTRACT:			CALL    NXT
-			CP      34		;ASCII ""
+			CP      '"'
 			INC     IY
 			JP      Z,CONS
 			DEC     IY
@@ -2067,7 +2099,7 @@ SRCH2:			DEC     HL              	; Token not found, so back up to the CR at the
 ; Corrupts:
 ; - HL
 X4OR5:			CP      4			; Check A = 4 (Z flag is used later)
-			LD	HL, DE
+			LD	HL,DE
 			ADD     HL,HL			; Multiply by 2 (note this operation preserves the zero flag)
 			RET     C			; Exit if overflow
 			ADD     HL,HL			; Multiply by 2 again
@@ -2102,30 +2134,15 @@ MUL16:			PUSH	BC
 			LD	L, A
 			ADD	HL, DE
 			RET
-
-;MUL16:			EX      DE,HL
-;			LD      HL,0
-;			LD      A,16
-;MUL16_1:		ADD     HL,HL
-;			RET     C               ;OVERFLOW
-;			SLA     E
-;			RL      D
-;			JR      NC,MUL16_2
-;			ADD     HL,BC
-;			RET     C
-;MUL16_2:		DEC     A
-;			JR      NZ,MUL16_1
-;			RET
-
 ;
-CHANEL:			CALL    NXT
-			CP      '#'
-			LD      A,45
-			JP      NZ,ERROR_        ;"Missing #"
-CHNL:			INC     IY              ;SKIP '#'
-			CALL    ITEMI
+CHANEL:			CALL    NXT			; Skip whitespace
+			CP      '#'			; Check for the '#' symbol
+			LD      A,45	
+			JP      NZ,ERROR_        	; If it is missing, then throw a "Missing #" error
+CHNL:			INC     IY             		; Bump past the '#'
+			CALL    ITEMI			; Get the channel number
 			EXX
-			EX      DE,HL
+			EX      DE,HL			; DE: The channel number
 			RET
 
 ; ASSEMBLER -------------------------------------------------------------------
