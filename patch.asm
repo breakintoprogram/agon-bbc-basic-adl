@@ -2,10 +2,11 @@
 ; Title:	BBC Basic for AGON
 ; Author:	Dean Belfield
 ; Created:	12/05/2023
-; Last Updated:	11/07/2023
+; Last Updated:	15/11/2023
 ;
 ; Modinfo:
 ; 11/07/2023:	Fixed *BYE for ADL mode
+; 15/11/2023:	Improved OSLOAD_TXT; now handles LF terminated files, files with no trailing LF or CR/LF at end
 
 			.ASSUME	ADL = 1
 				
@@ -556,8 +557,9 @@ OSLOAD_TXT1:		LD	HL, ACCS 		; Where the input is going to be stored
 ; First skip any whitespace (indents) at the beginning of the input
 ;
 $$:			CALL	OSBGET			; Read the byte into A
-			CP	CR 			; Is it CR?
-			JR	Z, OSLOAD_TXT2 		; Yes, so skip to the next line
+			JR	C, OSLOAD_TXT3		; Is it EOF?
+			CP	LF 			; Is it LF?
+			JR	Z, OSLOAD_TXT3 		; Yes, so skip to the next line
 			CP	21h			; Is it less than or equal to ASCII space?
 			JR	C, $B 			; Yes, so keep looping
 			LD	(HL), A 		; Store the first character
@@ -565,30 +567,39 @@ $$:			CALL	OSBGET			; Read the byte into A
 ;
 ; Now read the rest of the line in
 ;
-$$:			CALL	OSBGET			; Read the byte into A
+OSLOAD_TXT2:		CALL	OSBGET			; Read the byte into A
+			JR	C, OSLOAD_TXT4		; Is it EOF?
+			CP	20h			; Skip if not an ASCII character
+			JR	C, $F
 			LD	(HL), A 		; Store in the input buffer			
-			INC	L
+			INC	L			; Increment the buffer pointer
 			JP	Z, BAD			; If the buffer is full (wrapped to 0) then jump to Bad Program error
-			CP	CR			; Check for CR
-			JR	NZ, $B 			; If not, then loop to read the rest of the characters in
+$$:			CP	LF			; Check for LF
+			JR	NZ, OSLOAD_TXT2		; If not, then loop to read the rest of the characters in
 ;
 ; Finally, handle EOL/EOF
 ;
-OSLOAD_TXT2:		CALL	OSBGET			; Check for LF
-			CP	LF			; If it is not LF
-			JP	NZ, BAD			; Then jump to Bad Program error
+OSLOAD_TXT3:		LD	(HL), CR		; Store a CR for BBC BASIC
 			LD	A, L			; Check for minimum line length
 			CP	2			; If it is 2 characters or less (including CR)
 			JR	C, $F			; Then don't bother entering it
 			PUSH	DE			; Preserve the filehandle
 			CALL	ONEDIT1			; Enter the line in memory
-			CALL	CLEAN
+			CALL	C,CLEAN			; If a new line has been entered, then call CLEAN to set TOP and write &FFFF end of program marker
 			POP	DE
 $$:			CALL	OSSTAT			; End of file?
 			JR	NZ, OSLOAD_TXT1		; No, so loop
 			CALL	OSSHUT			; Close the file
 			SCF				; Flag to BASIC that we're good
 			RET
+;
+; Special case for BASIC programs with no blank line at the end
+;
+OSLOAD_TXT4:		LD	(HL), A			; Store the character
+			INC	L
+			JP	Z, BAD
+			JR	OSLOAD_TXT3
+			
 ;
 ; Load the file in as a tokenised binary blob
 ;
