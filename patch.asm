@@ -44,6 +44,7 @@
 			XDEF	OSLOAD
 			XDEF	OSSAVE
 			XDEF	EXPR_W2
+			XDEF	STAR_VERSION
 
 			XREF	_end			; In init.asm
 
@@ -387,7 +388,7 @@ STAR_BYE:		CALL	VBLANK_STOP		; Restore MOS interrupts
 ; *VERSION
 ;
 STAR_VERSION:		CALL    TELL			; Output the welcome message
-			DB    	"BBC BASIC (Agon) Version 1.04\n\r",0
+			DB    	"BBC BASIC (Agon ADL) Version 1.01\n\r",0
 			RET
 	
 ; *EDIT linenum

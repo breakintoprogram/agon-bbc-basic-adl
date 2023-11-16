@@ -13,7 +13,7 @@
 ; 06/06/2023:	Modified to run in ADL mode
 ; 26/06/2023:	Fixed binary and unary indirection
 ; 17/08/2023:	Added binary constants
-; 15/11/2023:	Fixed bug in ONEDIT1 for OSLOAD_TXT
+; 15/11/2023:	Fixed bug in ONEDIT1 for OSLOAD_TXT, Startup message now includes Agon version
 
 			.ASSUME	ADL = 1
 
@@ -114,6 +114,9 @@
 			XREF	RAM_START
 			XREF	RAM_END
 			XREF	R0
+			XREF	STAR_VERSION
+
+			XREF	_end			; In init.asm			
 ;
 ; A handful of common token IDs
 ;
@@ -172,12 +175,12 @@ _main:			LD	HL, ACCS		; Clear the ACCS
 			CP	2
 			JR	Z, AUTOLOAD		; 2 parameters = autoload
 			JR	C, COLD			; 1 parameter = normal start
+			CALL	STAR_VERSION
 			CALL	TELL
-			DB	"BBC BASIC (eZ80)\n\r"
 			DB	"Usage:\n\r"
-			DB	"RUN address <filename>\n\r", 0
+			DB	"RUN . <filename>\n\r", 0
 			LD	HL, 0			; The error code
-			RET
+			JP	_end
 ;							
 AUTOLOAD:		LD	HL, (IX+3)		; HLU: Address of filename
 			LD	DE, ACCS		;  DE: Destination address
@@ -214,8 +217,9 @@ COLD:			POP	HL			; Pop the return address to init off SPS
 			LD	A,(ACCS)		; Check if there is a filename in ACCS
 			OR	A
 			JP	NZ,CHAIN0		; Yes, so load and run
+			CALL	STAR_VERSION		; 
 			CALL    TELL			; Output the welcome message
-			DB    	"BBC BASIC (eZ80) Version 3.00\n\r"
+			DB    	"BBC BASIC (Z80) Version 3.00\n\r"
 NOTICE:			DB    	"(C) Copyright R.T.Russell 1987\n\r"
 			DB	"\n\r", 0
 ;			
