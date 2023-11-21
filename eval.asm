@@ -295,6 +295,7 @@ EXPR3S:			EX      AF,AF'			; Handle string concatenation
 			CALL    EXPR4           	; Fetch the second operator
 			EX      AF,AF'
 			JP      P,TYPE_			; If it is not a string, then Error: "Type mismatch"
+			LD	BC, 0			; Clear BC
 			LD      C,E             	; C: String length
 			POP     DE
 			PUSH    DE
@@ -303,7 +304,6 @@ EXPR3S:			EX      AF,AF'			; Handle string concatenation
 			LD      A,C
 			OR      A
 			JR      Z,EXP3S3
-			LD      B,L
 			LD      L,A             	; Source
 			ADD     A,E
 			LD      E,A             	; Destination
