@@ -563,7 +563,7 @@ DELETE:			CALL    SETTOP          	; Set TOP sysvar (first free byte at end of B
 			CALL    DLPAIR			; Get the line number pair - HL: BASIC program address, BC: second number (or 0 if missing)
 DELET1:			LD      A,(HL)			; Check whether it's the last line
 			OR      A			
-			JR      Z,WARMNC		; Yes, so do nothing
+			JP      Z,WARMNC		; Yes, so do nothing
 			INC     HL			; Skip the line length byte
 			LD	DE, 0			; Clear DE
 			LD      E,(HL)			; Fetch the line number in DE
@@ -653,6 +653,7 @@ LISTC:			PUSH    BC              	; Save second line number
 ;
 			LD      A,E             	; A: IF clause length
 			INC     HL			; Skip the length byte	
+			LD	DE,0			; Clear DE
 			LD      E,(HL)			; Fetch the line number in DE
 			INC     HL
 			LD      D,(HL)          
@@ -700,8 +701,8 @@ WARMNC:			JP      NC,WARM			; If exceeded the terminating line number then jump 
 			DEC     A			; Decrement line list counter
 			CALL    LTRAP			; TODO: This destroys A - is this a bug I've introduced in LTRAP?
 			POP     HL             	 	; Restore BASIC program address to beginning of line
+			LD	DE,0
 			LD      E,(HL)			; Fetch the length of line in DE
-			LD      D,0
 			ADD     HL,DE           	; Go to the next line
 			POP     DE              	; Restore IF clause length
 			POP     BC              	; Restore second line number
