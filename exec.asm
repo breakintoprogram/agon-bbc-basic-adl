@@ -1510,8 +1510,10 @@ BPUT:			CALL    CHANEL          	; Fetch the channel number
 ; See https://www.bbcbasic.co.uk/bbcbasic/mancpm/bbckey1.html#callparms for more information
 ;
 CALL_:			CALL    EXPRI           	; Fetch the address
+			LD	A,L			;  A: MSB of address
 			EXX
-			PUSH    HL              	; Save the address parameter on the stack
+			LD	(R0+0),HL		; HL: LSW of address
+			LD	(R0+2),A		
 			LD      B,0             	;  B: The parameter counter
 			LD      DE,BUFFER       	; DE: Vector
 ;
@@ -1539,7 +1541,7 @@ CALL1:			CALL    NXT			; Skip whitespace
 ;
 CALL2:			LD      A,B
 			LD      (BUFFER),A      	; Save the parameter count
-			POP     HL              	; Restore the address parameter value
+			LD	HL,(R0)			; HL: Address of the code
 			CALL    USR1			; And call it
 			JP      XEQ
 
