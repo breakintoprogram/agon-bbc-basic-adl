@@ -29,10 +29,6 @@ This project is designed to be assembled and linked using the Zilog ZDS II toolk
 NB:
 - The project is configured to download this to RAM at &40000 via the ZDS cable
 
-### Etiquette
-
-This code is very much a work-in-progress so please do not raise any issues or pull requests. If any are raised, then they wil be deleted. Binary files will be provided when the code is in a more stable state.
-
 ### Documentation
 
 The AGON documentation can now be found on the [Agon Light Documentation Wiki](https://github.com/breakintoprogram/agon-docs/wiki)
