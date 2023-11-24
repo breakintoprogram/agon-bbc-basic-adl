@@ -765,25 +765,28 @@ COUNT2:			EXX
 			RET
 ;
 ;OPENIN - Open a file for reading.
-;OPENOUT - Open a file for writing.
+;OPENOT - Open a file for writing.
 ;OPENUP - Open a file for reading or writing.
 ;Result is integer channel number (0 if error)
 ;
-OPENOT:			XOR     A
-			DB    21H             ;SKIP NEXT 2 BYTES
-OPENUP:			LD      A,2
-			DB    21H             ;SKIP NEXT 2 BYTES
-OPENIN:			LD      A,1
-			PUSH    AF              ;SAVE OPEN TYPE
-			CALL    ITEMS           ;FILENAME
+OPENOT:			XOR     A			; Open for writing
+			JR	OPENIN_1
+;			
+OPENUP:			LD      A,2			; Open for reading / writing
+			JR	OPENIN_1
+;
+OPENIN:			LD      A,1			; Open for reading
+;
+OPENIN_1:		PUSH    AF              	; Save OPEN type
+			CALL    ITEMS           	; Fetch the filename
 			LD      A,CR
 			LD      (DE),A
-			POP     AF              ;RESTORE OPEN TYPE
-			ADD     A,-1            ;AFFECT FLAGS
+			POP     AF              	; Restore the OPEN type
+			ADD     A,-1            	; Affect the flags
 			LD      HL,ACCS
-			CALL    OSOPEN
-			LD      L,A
-			JR      COUNT0
+			CALL    OSOPEN			; Call the OS specific OPEN routine in patch.asm
+			LD      L,A			; L: Channel number
+			JR      COUNT0			; Return channel number to BASIC
 ;
 ;EXT - Return length of file.
 ;PTR - Return current file pointer.
