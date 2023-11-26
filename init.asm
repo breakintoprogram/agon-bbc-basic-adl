@@ -3,16 +3,20 @@
 ;		Initialisation Code
 ; Author:	Dean Belfield
 ; Created:	12/05/2023
-; Last Updated:	11/07/2023
+; Last Updated:	26/11/2023
 ;
 ; Modinfo:
 ; 11/07/2023:	Fixed *BYE for ADL mode
+; 26/11/2023:	Moved the ram clear routine into here
 
 			SEGMENT CODE
 
 			XDEF	_end			
 			
 			XREF	_main				; In main.asm
+			
+			XREF	RAM_START			; In ram.asm
+			XREF	RAM_END
 			
 			.ASSUME	ADL = 1
 				
@@ -50,6 +54,7 @@ _start:			PUSH		AF			; Preserve the rest of the registers
 			CALL		_parse_params		; Parse the parameters
 			POP		IX			; IX: argv
 			LD		B, 0			;  C: argc
+			CALL		_clear_ram
 			JP		_main			; Start user code
 ;
 ; This bit of code is called from STAR_BYE and returns us safely to MOS
@@ -62,6 +67,18 @@ _end:			LD		SP, (_sps)		; Restore the stack pointer
 			POP		BC
 			POP		AF
 			RET					; Return to MOS
+
+;Clear the application memory
+;
+_clear_ram:		PUSH		BC
+			LD		HL, RAM_START		
+			LD		DE, RAM_START + 1
+			LD		BC, RAM_END - RAM_START - 1
+			XOR		A
+			LD		(HL), A
+			LDIR
+			POP		BC
+			RET
 						
 ; Parse the parameter string into a C array
 ; Parameters
