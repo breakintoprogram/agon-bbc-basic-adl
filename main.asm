@@ -4,7 +4,7 @@
 ; Author:	(C) Copyright  R.T.Russell  1984
 ; Modified By:	Dean Belfield
 ; Created:	12/05/2023
-; Last Updated:	15/11/2023
+; Last Updated:	26/11/2023
 ;
 ; Modinfo:
 ; 07/05/1984:	Version 2.3
@@ -14,6 +14,7 @@
 ; 26/06/2023:	Fixed binary and unary indirection
 ; 17/08/2023:	Added binary constants
 ; 15/11/2023:	Fixed bug in ONEDIT1 for OSLOAD_TXT, Startup message now includes Agon version
+; 26/11/2023:	Fixed bug in AUTOLOAD
 
 			.ASSUME	ADL = 1
 
@@ -184,23 +185,19 @@ _main:			LD	HL, ACCS		; Clear the ACCS
 ;							
 AUTOLOAD:		LD	HL, (IX+3)		; HLU: Address of filename
 			LD	DE, ACCS		;  DE: Destination address
-$$:			LD	A, (HL)			; Fetch the filename byte
+AUTOLOAD_1:		LD	A, (HL)			; Fetch the filename byte
 			LD	(DE), A			; 
 			INC	HL			; Increase the source pointer
 			INC	E			; We only need to increase E as ACCS is on a page boundary
-			JR	NZ, $B			; Loop until we hit a 0 byte
-			DEC	E
+			JR	Z, AUTOLOAD_2		; End if we hit the page boundary
+			OR	A
+			JR	NZ, AUTOLOAD_1		; Loop until we hit a 0 byte
+AUTOLOAD_2:		DEC	E
 			LD	A, CR
 			LD	(DE), A			; Replace the 0 byte with a CR for BBC BASIC
 ;
 COLD:			POP	HL			; Pop the return address to init off SPS
 			PUSH	HL 			; Stack it on SPL (*BYE will use this as the return address)
-			LD	HL, RAM_START		; Clear the RAM
-			LD	DE, RAM_START + 1
-			LD	BC, RAM_END - RAM_START - 1
-			XOR	A
-			LD	(HL), A
-			LDIR
 			LD	HL, STAVAR		; Cold start
 			LD	SP, HL
 			LD	(HL), 10
