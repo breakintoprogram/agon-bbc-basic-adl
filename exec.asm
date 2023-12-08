@@ -945,11 +945,11 @@ FNCHK:			EQU     $			; This will never fall through as PROC1 will do a JP XEQ
 ; PROCname
 ; N.B. ENTERED WITH A = ON PROC FLAG (EEh or the first character of the token name)
 ; This pushes the following data onto the execution stack
-; - 3 bytes: Token in A
+; - 3 bytes: The return address for ENDPROC (initially the ON PROC FLAG)
 ; - 3 bytes: Marker (the address of PROCHK)
 ;
-PROC:			PUSH    AF			; Push A onto the stack; this'll be checked for the token ON (TON) in PROC5
-			CALL    PROC1
+PROC:			PUSH    AF			; Push A onto the stack; this'll be checked for the token ON (TON) in PROC5,
+			CALL    PROC1			; and is also space reserved on the stack for the return address
 PROCHK:			EQU     $			; This will never fall through as PROC1 will do a JP XEQ
 ;
 PROC1:			CALL    CHECK			; Check there is space for this
@@ -1004,8 +1004,8 @@ PROC4:			LD	DE,(HL)			; HL: Address of pointer; fetch entity address in DE
 			CALL    NXT             	; Allow space before "("
 			PUSH    DE              	; Exchange DE and IY
 			EX      (SP),IY
-			POP     DE
 			CP      '('             	; Arguments?
+			POP     DE			; NB: This has been moved after the compare otherwise DE gets corrupted later? IDK why!?!
 			JR      NZ,PROC5
 			CALL    NXT             	; Allow space before "("
 			CP      '('
@@ -1022,18 +1022,18 @@ PROC4:			LD	DE,(HL)			; HL: Address of pointer; fetch entity address in DE
 			CALL    ARGUE           	; Transfer arguments
 			POP     HL
 ;
-PROC5:			LD	(HL), DE		; Save return address		
-			INC	HL
-			LD	A, (HL)			; Fetch the flag pushed at start of PROC routine (from AF)
+PROC5:			INC	HL			; Increment to the ON PROC flag address
+			LD	A, (HL)			; And fetch the value
+			DEC 	HL
+			LD	(HL), DE		; Save the ENDPROC return address pointer in the BASIC listing
 			CP	TON			; Was it "ON PROC"?
-			JP	NZ, XEQ			; No
-			PUSH    DE
+			JP	NZ, XEQ			; No, so back to XEQ
+			PUSH    DE			; Exchange DE and IY
 			EX      (SP),IY
 			CALL    SPAN            	; Skip rest of ON list
-			EX      (SP),IY
+			EX      (SP),IY			; Exchange DE and IY
 			POP     DE
-			DEC	HL
-			LD	(HL), DE
+			LD	(HL), DE		; Save the return address
 			JP      XEQ
 
 ; LOCAL var[,var...]
