@@ -296,12 +296,14 @@ EXPR3S:			EX      AF,AF'			; Handle string concatenation
 			EX      AF,AF'
 			JP      P,TYPE_			; If it is not a string, then Error: "Type mismatch"
 			LD	BC, 0			; Clear BC
-			LD      C,E             	; C: String length
+			LD      C,E             	; C: Length of the second string
 			POP     DE
 			PUSH    DE
 			LD      HL,ACCS
-			LD      D,H
-			LD      A,C
+			LD	A,E			;  E: Length of the first string
+			LD      DE,ACCS
+			LD	E,A 			; DE: Pointer to the end of the first string
+			LD      A,C			
 			OR      A
 			JR      Z,EXP3S3
 			LD      L,A             	; Source
@@ -1551,8 +1553,10 @@ PUSHS:			CALL    CHECK			; Check if there is sufficient space on the stack
 			SBC     HL,DE			; HL: Number of bytes to reserve on the stack (a negative number)
 			ADD     HL,SP			; Grow the stack
 			LD      SP,HL
-			LD      D,A			; Stack A and E (the string length)
-			PUSH    DE			; Note that this stacks 3 bytes, not 2; the MSB is irrelevant
+			LD      D,A			;  D: This needs to be set to A for some functions
+			LD	B,A			; Stack A and C (the string length)
+			PUSH    BC			; Note that this stacks 3 bytes, not 2; the MSB is irrelevant
+			LD	B,0			; Reset B to 0 for the LDIR in this function
 			JR      Z,PUSHS1        	; Is it zero length?
 			LD      DE,ACCS			; DE: Destination
 			EX      DE,HL			; HL: Destination, DE: Address on stack
