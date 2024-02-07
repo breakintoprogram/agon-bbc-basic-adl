@@ -1464,21 +1464,31 @@ TRACE1:			LD      (TRACEN),HL
 
 ; VDU expr,expr;....
 ;
-VDU:			CALL    EXPRI
+VDU:			LD	IX,BUFFER		; Storage for the VDU stream
+VDU1:			PUSH	IX
+			CALL    EXPRI			; Fetch the VDU character
+			POP	IX
 			EXX
-			LD      A,L
-			CALL    OSWRCH
-			LD      A,(IY)
-			CP      ','
-			JR      Z,VDU2
-			CP      ';'
-			JR      NZ,VDU3
-			LD      A,H
-			CALL    OSWRCH
-VDU2:			INC     IY
-VDU3:			CALL    TERMQ
-			JR      NZ,VDU
-			JP      XEQ
+			LD	(IX+0),L		; Write out the character to the buffer
+			INC	IX 
+			LD      A,(IY)			;  A: The separator character
+			CP      ','			; Is it a comma?
+			JR      Z,VDU2			; Yes, so it's a byte value - skip to next expression
+			CP      ';'			; Is it a semicolon?
+			JR      NZ,VDU3			; No, so skip to the next expression
+			LD	(IX+0),H		; Write out the high byte to the buffer
+			INC	IX 
+VDU2:			INC     IY			; Skip to the next character
+VDU3:			CALL    TERMQ			; Skip past white space
+			JR      NZ,VDU1			; Loop unti reached end of the VDU command
+			LD	A,IXL			;  A: Number of bytes to write out 
+			OR	A
+			JR 	Z,VDU4			; No bytes to write, so skip the next bit
+			LD	HL,BUFFER		; HL: Start of stream
+			LD	BC,0
+			LD	C,A			; BC: Number of bytes to write out
+			RST.LIL	18h			; Output the buffer to MOS
+VDU4:			JP      XEQ
 
 ; CLOSE channel number
 ;
