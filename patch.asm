@@ -88,6 +88,7 @@
 			XREF	KEYDOWN
 			XREF	KEYASCII
 			XREF	WIDTH
+			XREF	ASSEM
 
 ; OSLINE: Invoke the line editor
 ;
@@ -369,7 +370,9 @@ UPPRC:  		AND     7FH
 ; Each command has bit 7 of the last character set, and is followed by the address of the handler
 ; These must be in alphabetical order
 ;		
-COMDS:  		DB	'BY','E'+80h		; BYE
+COMDS:  		DB	'AS','M'+80h		; ASM
+			DW	STAR_ASM
+			DB	'BY','E'+80h		; BYE
 			DW	STAR_BYE
 			DB	'EDI','T'+80h		; EDIT
 			DW	STAR_EDIT
@@ -379,6 +382,15 @@ COMDS:  		DB	'BY','E'+80h		; BYE
 			DW	STAR_VERSION
 			DB	FFh
 						
+; *ASM string
+;
+STAR_ASM:		PUSH	IY			; Stack the BASIC pointer
+			PUSH	HL			; HL = IY
+			POP	IY
+			CALL	ASSEM			; Invoke the assembler
+			POP	IY
+			RET
+
 ; *BYE
 ;
 STAR_BYE:		CALL	VBLANK_STOP		; Restore MOS interrupts
