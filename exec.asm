@@ -1420,22 +1420,28 @@ LOMEMV:			CALL    EQUALS
 			LD      (FREE),HL
 			JP      XEQ
 ;
-HIMEMV:			CALL    EQUALS
-			CALL    EXPRI
-			EXX
-			LD      DE,(FREE)
-			INC     D
+HIMEMV:			CALL    EQUALS			; Check for '=' and throw an error if not found
+			CALL    EXPRI			; Load the expression into registers
+			LD	A,L			;  A: The MSB of the 24-bit value
+			EXX				; HL: The LSW of the 24-bit value
+			LD	(R0),HL
+			LD	(R0+2),A
+			LD	HL,(FREE)
+			LD      DE,256
+			ADD	HL,DE 
+			EX	DE,HL			; DE: FREE + 256
+			LD	HL,(R0)			; HL: The passed expression
 			XOR     A
 			SBC     HL,DE
-			ADD     HL,DE
-			JP      C,ERROR_         ;"No room"
+			ADD     HL,DE			; Do a bounds check
+			JP      C,ERROR_         	; Throw the error: "No room"
 			LD      DE,(HIMEM)
 			LD      (HIMEM),HL
 			EX      DE,HL
-			SBC     HL,SP
+			SBC     HL,SP			; Adjust the stack
 			JP      NZ,XEQ
 			EX      DE,HL
-			LD      SP,HL           ;LOAD STACK POINTER
+			LD      SP,HL           	; Load the SP
 			JP      XEQ
 
 ; WIDTH expr
