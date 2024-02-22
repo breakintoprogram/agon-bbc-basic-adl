@@ -2410,6 +2410,9 @@ GROUP08:		SUB	2			; The number of opcodes in GROUP8
 			RLCA
 			RLCA
 			ADD	A,C
+			LD	C,A
+			CALL	ED			; Prefix with ED
+			LD	A,C
 			CALL	BYTE_			; Write out the operand
 			JP	VAL8			; Write out the value
 ;
