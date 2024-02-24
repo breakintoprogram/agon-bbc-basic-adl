@@ -2527,17 +2527,17 @@ GROUP15_1:		CALL    COND_
 ; GROUP 16 - LD
 ;
 GROUP16:		SUB	1			; The number of opcodes in GROUP16
-			JR	NC,GROUP17
+			JP	NC,GROUP17
 			CALL	EZ80SF_FULL		; Evaluate the suffix
 			CALL    LDOP			; Check for accumulator loads	
 			JP      NC,LDA			; Yes, so jump here
 			CALL    REGHI
-			EX      AF,AF'
+			EX      AF,AF'			; Stack the carry flag for later
 			CALL    SKIP
 			CP      '('			; Check for bracket
 			JR      Z,LDIN			; Yes, so we're doing an indirect load from memory
 			EX      AF,AF'
-			JP      NC,GROUP05_1		; Load single register direct; go here
+			JP      NC,LDINR		; Load single register direct
 			LD      C,1
 			CALL    PAIR1
 			RET     C
@@ -2553,7 +2553,65 @@ GROUP16:		SUB	1			; The number of opcodes in GROUP16
 			LD      A,0F9H
 			JP      BYTE_
 ;
-LDIN:			EX      AF,AF'
+; TODO:
+; - LD (IX/Y+d),rr
+; - LD rr,(IX/Y+d)
+;
+LDINR:			CP	70H			; Check for LD (HL),?
+			JR 	NZ, LDINR_2		; No, so skip the next bit
+;
+			PUSH	IY			; Stack the BASIC program counter
+			CALL	OPND_CHECK		; So that we can peek ahead at the next operand
+			LD	A,B			; Check the operand type
+			AND	0FH
+			SUB	8			; Register pairs have a lower nibble >= 8
+			JR	C,LDINR_1 
+			CP	6			; Check for AF or SP
+			JR	Z,LDINR_1		; We'll jump to LDINR_1 as these can be treated as BASIC variable operands
+			POP	DE			; Discard the BASIC program counter stacked at top of this routine
+			BIT	7,B			; At this point we are doing LD (HL),rr - is rr IX or IY?
+			JR	NZ,LDINR_3		; Yes, so jump to the handler for that
+			LD	C,0FH			; Calculate the opcode byte
+LDINR_WS:		CALL	SHL3			; Shift left 3 times and OR with 0FH
+LDINR_W:		CALL	ED			; Write out the prefix byte
+			LD	A,C
+			JP	BYTE_			; Write out the opcode byte
+;
+LDINR_3:		LD	C,3FH			; Opcode for LD (HL),IX
+			BIT	6,B			; Is it IY?
+			JR	Z,LDINR_W		; No, so write that out
+			DEC	C			; Set the opcode to 3EH
+			JR	LDINR_W			; And write it out			
+;
+LDINR_1:		POP	IY			; Restore the BASIC program counter
+LDINR_2:		CALL    REGLO			; Check for LD r,r
+			LD      A,C
+			JP      NC,BIND1		; If it is a register, then write that out
+			XOR     46H			; At this point it's LD r,n
+			CALL    BIND
+			CALL    NUMBER
+			JP      VAL8
+;
+LDIN:			LD	A,B			; Check for LD rr,(HL)
+			AND	0FH
+			SUB	8			; Register pairs have a lower nibble >= 8
+			JR	C,LDIN_1
+			CP	6			; Check for AF or SP
+			JR	Z,LDIN_1		; We'll jump to LDIN_1 as these can be treated as BASIC variable operands
+			LD	C,A			; Store the result
+			PUSH	BC			; Check the second operand is (HL)
+			CALL	OPND_CHECK
+			POP	BC
+			OR	A			; This will return 0 if not found
+			JR	Z,LDIN_1
+;
+			BIT	7,B			; At this point we are doing LD rr,(HL) - is rr IX or IY?
+			JR 	NZ,LDIN_2		; Yes, so jump to the handler for that
+			LD	A,C			; Get the original operand 
+			LD	C,07H			; At this point we're doing LD rr,(HL) - calculate the opcode byte
+			JR	LDINR_WS		; Write out the opcodes
+;
+LDIN_1:			EX      AF,AF'			; At this point we are doing a standard Z80 8-bit LD
 			PUSH    BC
 			CALL    NC,REGLO
 			LD      A,C
@@ -2572,6 +2630,13 @@ LDIN:			EX      AF,AF'
 			BIT	7,D			; Check the ADL flag
 			JP	NZ,VAL24 		; If it is set, then use 24-bit addresses			
 			JP      VAL16			; Otherwise use 16-bit addresses
+;
+LDIN_2:			DEC	IX			; Walk the output pointer back one byte to overwrite the DD/FD
+			LD	C,37H			; Opcode for LD IX,(HL)
+			BIT	6,B			; Is it IY?
+			JR	Z,$F			; Yes, so go write that out
+			LD	C,31H			; Opcode for LD IY,(HL)
+$$			JP	LDINR_W 		; Write that out
 ;
 ; Group 17 - TST
 ;
@@ -2759,15 +2824,23 @@ BIND:			CP      76H
 ; Search through the operand table
 ; Returns:
 ; - B: The operand type
-; - D: Bit 7: 0 = no prefix, 1 = prefix
-; - E: The IX/IY offset
-; - F: Carry if not found
+; - F: Carry set if not found
 ;
-OPND:			PUSH    HL			; Preserve HL
+OPND_CHECK:		PUSH    HL			; Preserve HL
 			LD      HL,OPRNDS		; The operands table
 			CALL    FIND			; Find the operand
 			POP     HL
-			RET     C			; Return if not found
+			RET    
+;
+; Search through the operand table, write out the IX/Y prefix, and return flags
+; Returns:
+; - B: The operand type
+; - D: Bit 6: 0 = no prefix, 1 = prefix
+; - E: The IX/IY offset
+; - F: Carry set if not found
+;
+OPND:			CALL 	OPND_CHECK		; Call the operand check
+			RET	C 			; Return if not found
 			BIT     7,B			; Check if it is an index register (IX, IY)
 			RET     Z			; Return if it isn't
 			SET	6,D			; Set flag to indicate we've got an index
@@ -2778,18 +2851,29 @@ OPND:			PUSH    HL			; Preserve HL
 			POP     HL
 			LD	A,DDH			; IX prefix
 			BIT     6,B			; If bit 6 is reset then
-			JR      Z,BYTE_			; It's an IX instruction, otherwise set
+			JR	Z,BYTE_ 
 			LD	A,FDH			; IY prefix
 ;
 BYTE_:			LD      (IX),A			; Write a byte out
 			INC     IX
-			OR      A
+			OR	A			; Reset the carry
 			RET
 ;
-OFFSET:			LD      A,(IY)
-			CP      ')'
-			LD      HL,0
+; Fetch the IX/Y offset
+; Returns:
+; - L: The offset
+; 
+OFFSET:			LD      A,(IY)			; Check if there is an offset
+			CP      ')'			; If there is a bracket, then no offset
+			LD      HL,0			; Return 0
 			RET     Z
+;
+; Fetch a number
+; Returns:
+; - L: The number
+; - A: A copy of L
+; - F: Carry is reset
+;
 NUMBER:			CALL    SKIP
 			PUSH    BC
 			PUSH    DE
