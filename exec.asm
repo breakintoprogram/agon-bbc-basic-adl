@@ -2273,8 +2273,14 @@ OUTCH1:			JP      OUT_
 ; Register Usage: B: Type of most recent operand (the base value selected from the opcode table)
 ;                 C: Opcode beig built
 ;                 D: Flags
-;			Bit 7: Set to 1 if the instruction uses long addressing
-;			Bit 6: Set to 1 if the instruction is an index instruction with offset
+;			Bit 7: The ADL mode
+;			Bit 6: Set to 1 if the instruction has an ADL suffix
+;			Bit 5: Set to 1 if the instruction is an index instruction
+;			Bit 4: The eZ80 suffix
+;			Bit 3: The eZ80 suffix
+;			Bit 2: Spare
+;			Bit 1: The eZ80 suffix xx? - 0=S, 1=L
+;			Bit 0: The eZ80 suffix ?xx - 0=S, 1=L
 ;                 E: Offset from IX or IY
 ;                HL: Numeric operand value
 ;                IX: Code destination pointer
@@ -2300,7 +2306,7 @@ ASMB:			CP      '.'			; Check for a dot; this indicates a label
 ;			
 ASMB1:			LD	A,(LISTON)		; Get the OPT flags
 			AND	80H
-			LD      D,A     		;  D: Clear the flags and set the initial ADL mode (copied from bit 7 of LISTON)
+			LD      D,A     		;  D: Clear the flags and set the ADL mode (copied from bit 7 of LISTON)
 			CALL    SKIP			; Skip any whitespace
 			RET     Z			; And return if there is nothing further to process
 			CP      TCALL			; Check if it is the token CALL (it will have been tokenised by BASIC)
@@ -2313,12 +2319,21 @@ ASMB1:			LD	A,(LISTON)		; Get the OPT flags
 			RET     C			; If not found, then return; carry indicates an error condition
 			LD      C,B     		;  C: A copy of the opcode
 ;
+			EX	AF,AF'
+			CALL	EZ80SF_FULL		; Now pre-process the eZ80 suffixes
+			RET	C			; If there is an issue then return; carry indicates an error conditin
+			EX	AF,AF'			;  A: The table index
+;
 ; GROUP 0: Trivial cases requiring no computation
 ; GROUP 1: As Group 0, but with "ED" prefix
 ;
 			SUB     68			; The number of opcodes in GROUP0 and GROUP1
 			JR      NC,GROUP02		; If not in that range, then check GROUP2
-			CP      15-68			; Anything between 15 and 68 (neat compare trick here)
+			BIT	6,D			; Is there a suffix?
+			JR	Z,$F			; No, so good to continue
+			SCF				; Flag an error
+			RET			
+$$:			CP      15-68			; Anything between 15 and 68 (neat compare trick here)
 			CALL    NC,ED			; Needs to be prefixed with ED
 			JR      BYTE0			; Then write the opcode byte
 ;
@@ -2478,8 +2493,7 @@ VAL8:			LD      A,L
 ;
 GROUP12:		SUB	1			; The number of opcodes in GROUP12
 			JR	NC,GROUP13
-			CALL	EZ80SF_PART		; Evaluate the suffix (just LIL and SIS)
-			RET	C			; Exit if an invalid suffix is provided
+			CALL	BIND_EZ80 		; Bind the eZ80 suffix
 			CALL    COND_			; Evaluate the conditions
 			LD      A,C
 			JR      NC,GROUP12_1
@@ -2496,16 +2510,14 @@ GROUP12_1:		CALL    BYTE_			; Output the opcode (with conditions)
 ;
 GROUP13:		SUB	1			; The number of opcodes in GROUP13
 			JR	NC,GROUP14
-GROUP13_1:		CALL	EZ80SF_FULL		; Evaluate the suffix
-			CALL    GROUP15_1		; Output the opcode (with conditions)
+GROUP13_1:		CALL    GROUP15_1		; Output the opcode (with conditions)
 			JP	ADDR_			; Output the address
 ;
 ; GROUP 14 - RST
 ;
 GROUP14:		SUB	1			; The number of opcodes in GROUP14
 			JR	NC,GROUP15
-			CALL	EZ80SF_FULL		; Evaluate the suffix
-			RET	C			; Exit if an invalid suffix provided		
+			CALL	BIND_EZ80 		; Bind the eZ80 suffix
 			CALL    NUMBER
 			AND     C
 			OR      H
@@ -2518,7 +2530,8 @@ GROUP14:		SUB	1			; The number of opcodes in GROUP14
 ;
 GROUP15:		SUB	1			; The number of opcodes in GROUP15
 			JR	NC,GROUP16
-GROUP15_1:		CALL    COND_
+GROUP15_1:		CALL	BIND_EZ80		; Bind the eZ80 suffix
+			CALL    COND_
 			LD      A,C
 			JP      NC,BYTE_
 			OR      9
@@ -2528,18 +2541,65 @@ GROUP15_1:		CALL    COND_
 ;
 GROUP16:		SUB	1			; The number of opcodes in GROUP16
 			JP	NC,GROUP17
-			CALL	EZ80SF_FULL		; Evaluate the suffix
-			CALL    LDOP			; Check for accumulator loads	
-			JP      NC,LDA			; Yes, so jump here
-			CALL    REGHI
-			EX      AF,AF'			; Stack the carry flag for later
-			CALL    SKIP
-			CP      '('			; Check for bracket
-			JR      Z,LDIN			; Yes, so we're doing an indirect load from memory
-			EX      AF,AF'
-			JP      NC,LDINR		; Load single register direct
+			CALL    LDOP			; Check for fixed accumulator loads from the LDOPS table
+			JR      NC,LDA0			; Yes, so just write out the opcode
+			CALL    REGHI			; Get the first operand
+			JR 	C,LDRR			; Not found, so go to the handler for LD rr
+			CP	78h			; Is the first operand A?
+			JR	Z,LDA1 			; Yes, so deal with that as a special case
+;
+			CALL	REGLO			; Handle LD r,r and LD r,n
+			LD	A,C
+			JP	NC,BIND1
+			XOR	46H
+			JR	LDA2 
+;
+; Handle fixed LD A operations from the LDOPS table
+; TODO: Need to handle the ADL postfixes for the double register instructions
+;
+LDA0:			CP 	8			; Check whether we need to add an ADL prefix
+			PUSH	AF
+			CALL	NC,BIND_EZ80		; Yes, index is >= 8 so add a prefix
+			POP	AF
+$$:			CP	4			; Check whether we need to prefix the opcode with ED
+			CALL	NC,ED			; If so, write out an ED byte
+			LD	A,B			; A: The opcode
+			JP	BYTE_			; Write that out 
+;
+; Handle LD A,...
+;
+LDA1:			CALL	SKIP			; Skip the comma
+			EX	AF,AF'
+			CALL	REGLO			; Check second operand
+			LD	A,C
+			JP	NC,BIND1		; Jump to handler for LD A,r
+			EX	AF,AF'
+			CP	'('			; Is it a bracket?
+			JR	Z,LDAM			; Yes, so jump to handler for LD A,(MMn)
+			LD	A,3Eh			; Handle LD A,n
+LDA2:			CALL	BIND
+			CALL	NUMBER
+			JP	VAL8 
+;
+; Handle LD A,(MMn)
+;
+LDAM:			LD	A,3Ah			; Opcode for LD A,(MMn)
+LDAM1:			CALL    BIND
+			CALL    NUMBER			; Fetch the number			
+			BIT	7,D			; Check the ADL flag
+			JP	NZ,VAL24 		; If it is set, then use 24-bit addresses			
+			JP      VAL16			; Otherwise use 16-bit addresses
+;
+; Handle LD ??,...
+;
+LDRR:			CALL	SKIP			; Check for a bracket
+			CP	'('
+			JR	Z,LDMA			; Yes, so jump to the handler for LD (MMn),A
+;
+; Handle LD rr,...
+;
 			LD      C,1
-			CALL    PAIR1
+			CALL    PAIR1			; Check for register pair
 			RET     C
 			LD      A,14
 			CP      B
@@ -2547,96 +2607,18 @@ GROUP16:		SUB	1			; The number of opcodes in GROUP16
 			CALL    Z,PAIR
 			LD      A,B
 			AND     3FH
-			CP      12
+			CP      0CH			; Check for HL/IX/IY
 			LD      A,C
 			JP      NZ,GROUP12_1		; Load register pair direct; go here
 			LD      A,0F9H
 			JP      BYTE_
+
 ;
-; TODO:
-; - LD (IX/Y+d),rr
-; - LD rr,(IX/Y+d)
+; Handle LD (MMn),...
 ;
-LDINR:			CP	70H			; Check for LD (HL),?
-			JR 	NZ, LDINR_2		; No, so skip the next bit
-;
-			PUSH	IY			; Stack the BASIC program counter
-			CALL	OPND_CHECK		; So that we can peek ahead at the next operand
-			LD	A,B			; Check the operand type
-			AND	0FH
-			SUB	8			; Register pairs have a lower nibble >= 8
-			JR	C,LDINR_1 
-			CP	6			; Check for AF or SP
-			JR	Z,LDINR_1		; We'll jump to LDINR_1 as these can be treated as BASIC variable operands
-			POP	DE			; Discard the BASIC program counter stacked at top of this routine
-			BIT	7,B			; At this point we are doing LD (HL),rr - is rr IX or IY?
-			JR	NZ,LDINR_3		; Yes, so jump to the handler for that
-			LD	C,0FH			; Calculate the opcode byte
-LDINR_WS:		CALL	SHL3			; Shift left 3 times and OR with 0FH
-LDINR_W:		CALL	ED			; Write out the prefix byte
-			LD	A,C
-			JP	BYTE_			; Write out the opcode byte
-;
-LDINR_3:		LD	C,3FH			; Opcode for LD (HL),IX
-			BIT	6,B			; Is it IY?
-			JR	Z,LDINR_W		; No, so write that out
-			DEC	C			; Set the opcode to 3EH
-			JR	LDINR_W			; And write it out			
-;
-LDINR_1:		POP	IY			; Restore the BASIC program counter
-LDINR_2:		CALL    REGLO			; Check for LD r,r
-			LD      A,C
-			JP      NC,BIND1		; If it is a register, then write that out
-			XOR     46H			; At this point it's LD r,n
-			CALL    BIND
-			CALL    NUMBER
-			JP      VAL8
-;
-LDIN:			LD	A,B			; Check for LD rr,(HL)
-			AND	0FH
-			SUB	8			; Register pairs have a lower nibble >= 8
-			JR	C,LDIN_1
-			CP	6			; Check for AF or SP
-			JR	Z,LDIN_1		; We'll jump to LDIN_1 as these can be treated as BASIC variable operands
-			LD	C,A			; Store the result
-			PUSH	BC			; Check the second operand is (HL)
-			CALL	OPND_CHECK
-			POP	BC
-			OR	A			; This will return 0 if not found
-			JR	Z,LDIN_1
-;
-			BIT	7,B			; At this point we are doing LD rr,(HL) - is rr IX or IY?
-			JR 	NZ,LDIN_2		; Yes, so jump to the handler for that
-			LD	A,C			; Get the original operand 
-			LD	C,07H			; At this point we're doing LD rr,(HL) - calculate the opcode byte
-			JR	LDINR_WS		; Write out the opcodes
-;
-LDIN_1:			EX      AF,AF'			; At this point we are doing a standard Z80 8-bit LD
-			PUSH    BC
-			CALL    NC,REGLO
-			LD      A,C
-			POP     BC
-			JP      NC,BIND
-			LD      C,0AH
-			CALL    PAIR1
-			CALL    LD16
-			JP      NC,GROUP12_1
-			CALL    NUMBER
-			LD      C,2
-			CALL    PAIR
-			CALL    LD16
-			RET     C
-			CALL    BYTE_
-			BIT	7,D			; Check the ADL flag
-			JP	NZ,VAL24 		; If it is set, then use 24-bit addresses			
-			JP      VAL16			; Otherwise use 16-bit addresses
-;
-LDIN_2:			DEC	IX			; Walk the output pointer back one byte to overwrite the DD/FD
-			LD	C,37H			; Opcode for LD IX,(HL)
-			BIT	6,B			; Is it IY?
-			JR	Z,$F			; Yes, so go write that out
-			LD	C,31H			; Opcode for LD IY,(HL)
-$$			JP	LDINR_W 		; Write that out
+LDMA:			LD	A,32h			; Handle LD (MMn),A
+			CALL	LDAM1
+			JP	REGLO			; We can just discard the second operand
 ;
 ; Group 17 - TST
 ;
@@ -2714,44 +2696,41 @@ $$:			XOR     A
 ;
 ;SUBROUTINES:
 ;
-EZ80SF_PART:		LD	A,(IY)			; Check for a dot
-			CP	'.'
-			JR	Z, $F			; If present, then carry on processing the eZ80 suffix
-			OR	A			; Reset the carry flag (no error)
-			RET				; And return
-$$:			INC	IY			; Skip the dot
-			PUSH	BC			; Push the operand
-			LD	HL,EZ80SFS_2		; Check the shorter fully qualified table (just LIL and SIS)
-			CALL	FIND			; Look up the operand
-			JR	NC,EZ80SF_OK
-			POP	BC			; Not found at this point, so will return with a C (error)
-			RET
-;			
+
+; Evaluate the ADL suffix
+; Modifies
+; - D: Flags
+;	Bit 6: Set to 1 if the instruction has an ADL suffix
+;	Bit 4: The eZ80 suffix
+;	Bit 3: The eZ80 suffix
+;	Bit 1: The eZ80 suffix xx? - 0=S, 1=L
+;	Bit 0: The eZ80 suffix ?xx - 0=S, 1=L
+; Returns:
+; - F: Carry set if there is an error, otherwise NC
+;
 EZ80SF_FULL:		LD	A,(IY)			; Check for a dot
 			CP	'.'
 			JR	Z,$F			; If present, then carry on processing the eZ80 suffix
-			OR	A			; Reset the carry flag (no error)
+			XOR	A			; Reset the carry flag (no error)
 			RET				; And return
 $$:			INC	IY 			; Skip the dot
-			PUSH	BC			; Push the operand
+			PUSH	BC			; Save the original operand
 			LD	HL,EZ80SFS_1		; First check the fully qualified table
 			CALL	FIND 			; Look up the operand
 			JR	NC,EZ80SF_OK		; Yes, we've found it, so go write it out
 			CALL	EZ80SF_TABLE		; Get the correct shortcut table in HL based upon the ADL mode
 			CALL	FIND
 			JR	NC,EZ80SF_OK
-			POP	BC			; Not found at this point, so will return with a C (error)
+			XOR	A			; Set A to 0
+			SCF				; Not found at this point, so will return with a C (error)
+			POP	BC			; And restore the original operand
 			RET
 ;
 EZ80SF_OK:		LD	A,B			; The operand value
-			CALL	NC,BYTE_ 		; Write it out if found
-			RES	7,D			; Clear the default ADL mode from the flags
-			AND	2			; Check the second half of the suffix (.xxL)
-			RRCA				; Shift into bit 7
-			RRCA
-			OR	D			; Or into bit 7 of D
+			AND	01011011B		; Mask out the bits we want to set in D
+			OR	D			; This also resets the C flag
 			LD	D,A
-			POP	BC 			; Restore the operand
+			POP	BC 			; Restore the original operand
 			RET
 ;
 EZ80SF_TABLE:		LD	HL,EZ80SFS_ADL0		; Return with the ADL0 lookup table
@@ -2760,9 +2739,14 @@ EZ80SF_TABLE:		LD	HL,EZ80SFS_ADL0		; Return with the ADL0 lookup table
 			LD	HL,EZ80SFS_ADL1		; Otherwise return with the ADL1 lookup table
 			RET 
 ;
-ADDR_:			BIT	7,D			; Check the ADL flag
-			JR	NZ,ADDR24 		; If it is set, then use 24-bit addresses
-;
+ADDR_:			BIT	6,D			; Is there a suffix?
+			JR	NZ,$F			; Yes, so handle that further down
+			BIT	7,D			; No suffix, so just use the ADL mode to determine word width
+			JR	Z,ADDR16		; - ADL=0
+			JR	ADDR24 			; - ADL=1
+$$:			BIT	1,D			; Check the suffix
+			JR	NZ,ADDR24
+
 ADDR16:			CALL	NUMBER			; Fetch an address (16-bit) and fall through to VAL16
 VAL16:			CALL    VAL8			; Write out a 16-bit value (HL)
 			LD      A,H
@@ -2774,11 +2758,6 @@ VAL24:			CALL	VAL16			; Lower 16-bits are in HL
 			LD	A,L			; Upper 16-bits are in HL', just need L' to make up 24-bit value
 			EXX
 			JP	BYTE_
-;
-LDA:			CP      4
-			CALL    C,ED
-			LD      A,B
-			JP      BYTE_
 ;
 LD16:			LD      A,B
 			JR      C,LD8
@@ -2816,10 +2795,16 @@ BIND:			CP      76H
 			SCF
 			RET     Z               	; Reject LD (HL),(HL)
 			CALL    BYTE_
-			BIT	6,D			; Check the index bit in flags
+			BIT	5,D			; Check the index bit in flags
 			RET     Z	
 			LD      A,E			; If there is an index, output the offset
 			JR      BYTE_
+;
+BIND_EZ80:		BIT	6,D			; Is there a suffix?
+			RET	Z			; No, so just return
+			LD	A,D
+			AND	01011011B		; Form the suffix code
+			JR	BYTE_ 
 ;
 ; Search through the operand table
 ; Returns:
@@ -2835,7 +2820,7 @@ OPND_CHECK:		PUSH    HL			; Preserve HL
 ; Search through the operand table, write out the IX/Y prefix, and return flags
 ; Returns:
 ; - B: The operand type
-; - D: Bit 6: 0 = no prefix, 1 = prefix
+; - D: Bit 5: 0 = no prefix, 1 = prefix
 ; - E: The IX/IY offset
 ; - F: Carry set if not found
 ;
@@ -2843,7 +2828,7 @@ OPND:			CALL 	OPND_CHECK		; Call the operand check
 			RET	C 			; Return if not found
 			BIT     7,B			; Check if it is an index register (IX, IY)
 			RET     Z			; Return if it isn't
-			SET	6,D			; Set flag to indicate we've got an index
+			SET	5,D			; Set flag to indicate we've got an index
 			BIT     3,B			; Check if an offset is required
 			PUSH    HL
 			CALL    Z,OFFSET		; If bit 3 of B is zero, then get the offset
@@ -2934,7 +2919,7 @@ ORC:			OR      C
 			LD      C,A
 			RET
 ;
-LDOP:			LD      HL,LDOPS
+LDOP:			LD      HL,LDOPS		; Table of hard-coded LD instructions
 
 ;
 ; Look up a value in a table
@@ -2942,6 +2927,7 @@ LDOP:			LD      HL,LDOPS
 ; - IY: Address of the assembly language line in the BASIC program area
 ; - HL: Address of the table
 ; Returns:
+; - A: The index into the table, indexed from 0
 ; - B: The operand code
 ; - F: Carry set if not found
 ;
@@ -3219,15 +3205,28 @@ OPRNDS:			DB	'B'+80H, 00H
 			DB	0
 ;
 ; Load operations
+; The first four entries are not prefixed with ED
 ;
-LDOPS:			DB	'I',0,'A'+80H,47H
-			DB	'R',0,'A'+80H,4FH
-			DB	'A',0,'I'+80H,57H
-			DB	'A',0,'R'+80H,5FH
-			DB	'(BC',0,'A'+80H,02h
+LDOPS:			DB	'(BC',0,'A'+80H,02h
 			DB	'(DE',0,'A'+80H,12H
 			DB	'A',0,'(B','C'+80H,0AH
 			DB	'A',0,'(D','E'+80H,1AH
+;
+; These are prefixed with ED
+; 
+			DB	'I',0,'A'+80H,47H
+			DB	'R',0,'A'+80H,4FH
+			DB	'A',0,'I'+80H,57H
+			DB	'A',0,'R'+80H,5FH
+;
+; These are prefixed with ED and can also have an optional .S or .L operand suffix 
+;
+			DB	'BC',0,'(H','L'+80H,07H
+			DB	'DE',0,'(H','L'+80H,17H
+			DB	'HL',0,'(H','L'+80H,27H
+			DB	'(HL',0,'B','C'+80H,0FH
+			DB	'(HL',0,'D','E'+80H,1FH
+			DB	'(HL',0,'H','L'+80H,2FH
 ;
 			DB	0
 ;
