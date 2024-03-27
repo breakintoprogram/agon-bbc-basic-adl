@@ -89,6 +89,7 @@
 			XREF	KEYASCII
 			XREF	WIDTH
 			XREF	ASSEM
+			XREF	SYNTAX
 
 ; OSLINE: Invoke the line editor
 ;
@@ -389,7 +390,8 @@ STAR_ASM:		PUSH	IY			; Stack the BASIC pointer
 			POP	IY
 			CALL	ASSEM			; Invoke the assembler
 			POP	IY
-			RET
+			RET	NC			; NC = No error
+			JP	SYNTAX			; Throw a syntax error
 
 ; *BYE
 ;
