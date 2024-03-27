@@ -3224,9 +3224,13 @@ LDOPS:			DB	'(BC',0,'A'+80H,02h
 			DB	'BC',0,'(H','L'+80H,07H
 			DB	'DE',0,'(H','L'+80H,17H
 			DB	'HL',0,'(H','L'+80H,27H
+			DB	'IX',0,'(H','L'+80H,37H
+			DB	'IY',0,'(H','L'+80H,31H
 			DB	'(HL',0,'B','C'+80H,0FH
 			DB	'(HL',0,'D','E'+80H,1FH
 			DB	'(HL',0,'H','L'+80H,2FH
+			DB	'(HL',0,'I','X'+80H,3FH
+			DB	'(HL',0,'I','Y'+80H,3EH
 ;
 			DB	0
 ;
